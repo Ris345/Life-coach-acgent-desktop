@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Life Coach Agent - Test</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #1a1d29;
+        color: #ffffff;
+        font-family: system-ui, sans-serif;
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #root {
+        text-align: center;
+        padding: 2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <h1 style="font-size: 3rem; margin-bottom: 1rem;">🧠 LIFE COACH AGENT</h1>
+      <p style="font-size: 1.5rem; margin-bottom: 2rem;">If you see this, HTML is loading!</p>
+      <div style="background: #252936; padding: 2rem; border-radius: 1rem; max-width: 600px; margin: 0 auto;">
+        <h2>Debug Info:</h2>
+        <p id="url-info">Loading...</p>
+        <p id="ready-state">Loading...</p>
+        <p style="margin-top: 1rem; color: #60a5fa;">
+          Check browser console (Cmd+Option+I) for more logs
+        </p>
+      </div>
+    </div>
+    <script>
+      console.log("=== SIMPLE HTML TEST SCRIPT LOADED ===");
+      console.log("Current URL:", window.location.href);
+      console.log("Document ready state:", document.readyState);
+      
+      document.getElementById('url-info').textContent = 'URL: ' + window.location.href;
+      document.getElementById('ready-state').textContent = 'Ready State: ' + document.readyState;
+      
+      window.addEventListener('load', () => {
+        console.log("✅ Window fully loaded");
+        document.getElementById('ready-state').textContent = 'Ready State: ' + document.readyState;
+      });
+    </script>
+  </body>
+</html>
+

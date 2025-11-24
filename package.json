@@ -1,0 +1,33 @@
+{
+  "name": "lifecoachagent-desktop",
+  "version": "0.1.0",
+  "description": "Life Coach Agent Desktop Application",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:wait": "vite & node wait-for-vite.js",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "npm run kill-port && tauri dev",
+    "tauri:build": "tauri build",
+    "kill-port": "lsof -ti:3000 | xargs kill -9 2>/dev/null || true",
+    "dev:clean": "npm run kill-port && vite"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.84.0",
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-http": "^2.5.4",
+    "@tauri-apps/plugin-store": "^2.4.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.0"
+  }
+}
