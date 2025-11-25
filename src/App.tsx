@@ -30,42 +30,42 @@ function AppContent() {
     <div style={{
       width: '100vw',
       height: '100vh',
-      background: '#1a1d29',
+      background: 'linear-gradient(135deg, #0a0e27 0%, #1a1d3a 50%, #0f1419 100%)',
       color: '#ffffff',
-      padding: '2rem',
       fontFamily: 'system-ui, sans-serif',
       overflowY: 'auto',
+      position: 'relative',
     }}>
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '2rem',
-      }}>
-        <div>
-          <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🧠 Life Coach Agent</h1>
-          <p style={{ color: '#888', fontSize: '0.9rem' }}>
-            Welcome, {user?.name || user?.email}!
-          </p>
-        </div>
-        <button
-          onClick={signOut}
-          style={{
-            padding: '0.5rem 1rem',
-            background: '#3b82f6',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '0.5rem',
-            cursor: 'pointer',
-            fontSize: '0.9rem',
-            transition: 'background 0.2s',
-          }}
-          onMouseOver={(e) => e.currentTarget.style.background = '#2563eb'}
-          onMouseOut={(e) => e.currentTarget.style.background = '#3b82f6'}
-        >
-          Sign Out
-        </button>
-      </div>
+      {/* Sign Out Button - Fixed Top Right */}
+      <button
+        onClick={signOut}
+        style={{
+          position: 'fixed',
+          top: '1.5rem',
+          right: '1.5rem',
+          padding: '0.75rem 1.5rem',
+          background: 'rgba(59, 130, 246, 0.1)',
+          color: '#60a5fa',
+          border: '1px solid rgba(59, 130, 246, 0.3)',
+          borderRadius: '0.75rem',
+          cursor: 'pointer',
+          fontSize: '0.9rem',
+          fontWeight: '600',
+          transition: 'all 0.2s',
+          zIndex: 1000,
+          backdropFilter: 'blur(10px)',
+        }}
+        onMouseOver={(e) => {
+          e.currentTarget.style.background = 'rgba(59, 130, 246, 0.2)';
+          e.currentTarget.style.borderColor = '#60a5fa';
+        }}
+        onMouseOut={(e) => {
+          e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)';
+          e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+        }}
+      >
+        Sign Out
+      </button>
 
       <Dashboard />
     </div>

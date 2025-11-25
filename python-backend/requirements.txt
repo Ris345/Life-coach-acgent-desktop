@@ -1,6 +1,7 @@
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pydantic==2.5.0
-psutil==5.9.6
+fastapi>=0.104.1
+uvicorn[standard]>=0.24.0
+pydantic>=2.10.0
+psutil>=5.9.6
 pygetwindow==0.0.9; sys_platform == "win32"
 pyobjc; sys_platform == "darwin"
+requests>=2.31.0

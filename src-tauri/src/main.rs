@@ -130,7 +130,17 @@ async fn check_backend_health() -> Result<String, String> {
 }
 
 fn find_python_executable() -> Result<String, String> {
-    // Try common Python executable names
+    // First, try to use the virtual environment Python if it exists
+    let mut backend_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    backend_dir.push("..");
+    backend_dir.push("python-backend");
+    let venv_python = backend_dir.join("venv").join("bin").join("python3");
+    
+    if venv_python.exists() {
+        return Ok(venv_python.to_str().unwrap().to_string());
+    }
+    
+    // Fallback to system Python
     let candidates = ["python3", "python", "py"];
     
     for cmd in &candidates {
@@ -144,6 +154,107 @@ fn find_python_executable() -> Result<String, String> {
     }
     
     Err("Python executable not found. Please ensure Python 3.10+ is installed.".to_string())
+}
+
+#[tauri::command]
+fn notify_user(title: String, body: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        
+        // Escape special characters for AppleScript
+        let escaped_body = body
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n");
+        let escaped_title = title
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"");
+        
+        // Use macOS notification center via osascript
+        // soundName: "default" makes it audible
+        // subtitle: empty (can add if needed)
+        let script = format!(
+            "display notification \"{}\" with title \"{}\" sound name \"default\"",
+            escaped_body,
+            escaped_title
+        );
+        
+        // Run osascript in background (detached) so it doesn't block
+        // This ensures notifications work even when app is minimized
+        let output = Command::new("osascript")
+            .arg("-e")
+            .arg(&script)
+            .output();
+        
+        match output {
+            Ok(result) => {
+                if result.status.success() {
+                    Ok(())
+                } else {
+                    let error_msg = String::from_utf8_lossy(&result.stderr);
+                    Err(format!("Notification script failed: {}", error_msg))
+                }
+            },
+            Err(e) => Err(format!("Failed to send notification: {}", e)),
+        }
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        // Windows 10+ toast notifications
+        use std::process::Command;
+        
+        // Use PowerShell to show toast notification
+        let ps_script = format!(
+            "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null; \
+            [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null; \
+            $xml = '<toast><visual><binding template=\"ToastText02\"><text id=\"1\">{}</text><text id=\"2\">{}</text></binding></visual></toast>'; \
+            $xml = $xml -f '{}', '{}'; \
+            $toastXml = [Windows.Data.Xml.Dom.XmlDocument]::new(); \
+            $toastXml.LoadXml($xml); \
+            $toast = [Windows.UI.Notifications.ToastNotification]::new($toastXml); \
+            [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('LifeOS').Show($toast);",
+            title.replace("'", "''"),
+            body.replace("'", "''"),
+            title.replace("'", "''"),
+            body.replace("'", "''")
+        );
+        
+        let output = Command::new("powershell")
+            .arg("-Command")
+            .arg(&ps_script)
+            .output();
+        
+        match output {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                // Fallback to simple message box
+                println!("Notification: {} - {}", title, body);
+                Err(format!("Failed to send notification: {}", e))
+            },
+        }
+    }
+    
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        // Linux - use notify-send if available
+        use std::process::Command;
+        
+        let output = Command::new("notify-send")
+            .arg(&title)
+            .arg(&body)
+            .output();
+        
+        match output {
+            Ok(_) => Ok(()),
+            Err(_) => {
+                // Fallback
+                println!("Notification: {} - {}", title, body);
+                Ok(())
+            },
+        }
+    }
 }
 
 fn main() {
@@ -266,7 +377,7 @@ fn main() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![check_backend_health, open_url])
+        .invoke_handler(tauri::generate_handler![check_backend_health, open_url, notify_user])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
