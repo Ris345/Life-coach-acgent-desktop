@@ -157,10 +157,27 @@ Data persists across app restarts.
 - Ollama is optional - app works with rule-based fallback
 - To enable AI: Install Ollama and run `ollama pull llama3.1`
 
-## 📝 License
+## 🏗️ Architecture Overview
 
-[Add your license here]
+### Backend (Python FastAPI)
+- **Behavior Tracking**: Monitors active windows/apps every 2 seconds
+- **AI Goal Parser**: Converts natural language goals to structured data
+- **Goal Alignment**: Tracks how well behavior matches goals
+- **Nudge Engine**: Generates contextual interventions
+- **AI Coach**: Produces personalized weekly reports
 
-## 🤝 Contributing
+### Frontend (React + TypeScript)
+- **Dashboard**: Main UI with goal tracking and metrics
+- **Real-Time Updates**: Polls backend every 2 seconds
+- **Goal Progress**: Visual progress bars and alignment indicators
+- **AI Reports**: Displays coaching insights
 
-[Add contribution guidelines]
+### Data Flow
+1. User sets goal → AI parses → Profile created
+2. Backend tracks activity → Categorizes apps → Updates metrics
+3. Nudge engine checks conditions → Sends notifications
+4. Weekly AI report generated → Displayed in UI
+
+## 📚 Additional Documentation
+
+- `PRODUCT_OVERVIEW.md` - Product vision, flow, and monetization strategy
