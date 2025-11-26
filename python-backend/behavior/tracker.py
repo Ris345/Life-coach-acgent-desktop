@@ -50,6 +50,10 @@ class BehaviorTracker:
         
         # Drift detection
         self.drift_events: List[datetime] = []  # Track when drifts occur
+        
+        # Goal alignment tracking
+        self.goal_focus_seconds: float = 0.0  # Time spent in goal-aligned focus apps
+        self.goal_distraction_seconds: float = 0.0  # Time spent in distraction apps during goal hours
     
     def set_goal(self, goal: str, profile: Optional[Dict] = None, daily_goal_minutes: int = 60):
         """
@@ -122,6 +126,12 @@ class BehaviorTracker:
             # Only count focus time for focus category
             if category == "focus":
                 self.app_usage[window_title]["focus_seconds"] += duration_seconds
+                # Track goal-aligned focus time
+                if self._is_goal_aligned_app(window_title):
+                    self.goal_focus_seconds += duration_seconds
+            elif category == "distraction":
+                # Track distraction time during goal hours
+                self.goal_distraction_seconds += duration_seconds
         
         # Create event
         event = ActivityEvent(
@@ -146,6 +156,72 @@ class BehaviorTracker:
     def get_previous_category(self) -> Optional[str]:
         """Get the previous category for drift detection."""
         return self.previous_category
+    
+    def _is_goal_aligned_app(self, app_name: str) -> bool:
+        """
+        Check if an app is aligned with the current goal profile.
+        
+        Args:
+            app_name: Application name
+            
+        Returns:
+            True if app is in focus_apps or matches goal keywords
+        """
+        if not self.current_profile:
+            return False
+        
+        app_lower = app_name.lower()
+        focus_apps = self.current_profile.get("focus_apps", [])
+        keywords = self.current_profile.get("keywords", [])
+        
+        # Check if app is in focus apps list
+        for focus_app in focus_apps:
+            if focus_app.lower() in app_lower or app_lower in focus_app.lower():
+                return True
+        
+        # Check if app matches goal keywords
+        for keyword in keywords:
+            if keyword.lower() in app_lower:
+                return True
+        
+        return False
+    
+    def get_goal_alignment(self) -> Dict:
+        """
+        Calculate goal alignment metrics.
+        
+        Returns:
+            Dictionary with:
+                - goal_alignment: Percentage (0-100) of time aligned with goal
+                - goal_minutes_today: Minutes spent in goal-aligned apps
+                - required_minutes_today: Required minutes per day
+                - goal_progress_percent: Progress toward daily goal (0-100)
+        """
+        if not self.current_goal or not self.current_profile:
+            return {
+                "goal_alignment": 0,
+                "goal_minutes_today": 0,
+                "required_minutes_today": self.daily_goal_minutes,
+                "goal_progress_percent": 0
+            }
+        
+        goal_minutes_today = self.goal_focus_seconds / 60.0
+        required_minutes = self.daily_goal_minutes
+        
+        # Calculate goal progress percentage
+        goal_progress_percent = min(100.0, (goal_minutes_today / required_minutes * 100.0)) if required_minutes > 0 else 0.0
+        
+        # Calculate alignment percentage (goal time vs total tracked time)
+        stats = self.get_stats()
+        total_tracked_minutes = stats.total_focus_minutes + stats.total_distraction_minutes + stats.total_neutral_minutes
+        goal_alignment = (goal_minutes_today / total_tracked_minutes * 100.0) if total_tracked_minutes > 0 else 0.0
+        
+        return {
+            "goal_alignment": round(goal_alignment, 1),
+            "goal_minutes_today": round(goal_minutes_today, 1),
+            "required_minutes_today": required_minutes,
+            "goal_progress_percent": round(goal_progress_percent, 1)
+        }
     
     def has_drifted(self) -> bool:
         """Check if user has drifted from focus."""

@@ -57,9 +57,9 @@ class NudgeEngine:
             if not self.last_nudge_time or (now - self.last_nudge_time).total_seconds() > 300:  # 5 min cooldown
                 self.last_nudge_time = now
                 if goal:
-                    return f"🎉 Daily goal complete! You've focused for {int(focus_time_minutes)} minutes on '{goal}'."
+                    return f"Daily goal complete! You've focused for {int(focus_time_minutes)} minutes on '{goal}'."
                 else:
-                    return f"🎉 Daily goal complete! You've focused for {int(focus_time_minutes)} minutes."
+                    return f"Daily goal complete! You've focused for {int(focus_time_minutes)} minutes."
         
         # Detect drift (focus → distraction or neutral)
         if previous_category == "focus" and current_category in ["distraction", "neutral"]:
@@ -69,9 +69,9 @@ class NudgeEngine:
                 self.last_nudge_time = now
                 
                 if goal:
-                    return f"⚠️ You drifted from your goal: '{goal}'. Want to refocus?"
+                    return f"You drifted from your goal: '{goal}'. Want to refocus?"
                 else:
-                    return "⚠️ You switched to a distraction. Want to get back to focus?"
+                    return "You switched to a distraction. Want to get back to focus?"
         
         # Detect long distraction session (nudge every 5 minutes after 10 minutes)
         if current_category == "distraction" and distraction_time_minutes >= 10:
@@ -103,27 +103,27 @@ class NudgeEngine:
                     self.last_category = current_category
                     self.last_nudge_time = now
                     if goal:
-                        return f"🔥 {int(streak_minutes)}-minute streak! You're making progress on '{goal}'."
+                        return f"{int(streak_minutes)}-minute streak! You're making progress on '{goal}'."
                     else:
-                        return f"🔥 {int(streak_minutes)}-minute focus streak! Keep going!"
+                        return f"{int(streak_minutes)}-minute focus streak! Keep going!"
             
             elif streak_minutes >= 20 and streak_minutes < 21:
                 if self.last_category != "focus" or not self.last_nudge_time:
                     self.last_category = current_category
                     self.last_nudge_time = now
                     if goal:
-                        return f"💪 {int(streak_minutes)} minutes of deep focus on '{goal}'! You're in the zone!"
+                        return f"{int(streak_minutes)} minutes of deep focus on '{goal}'! You're in the zone!"
                     else:
-                        return f"💪 {int(streak_minutes)} minutes of deep focus! You're in the zone!"
+                        return f"{int(streak_minutes)} minutes of deep focus! You're in the zone!"
             
             elif streak_minutes >= 30 and streak_minutes < 31:
                 if self.last_category != "focus" or not self.last_nudge_time:
                     self.last_category = current_category
                     self.last_nudge_time = now
                     if goal:
-                        return f"🚀 Amazing! {int(streak_minutes)} minutes of focused work on '{goal}'. You're crushing it!"
+                        return f"Amazing! {int(streak_minutes)} minutes of focused work on '{goal}'. You're crushing it!"
                     else:
-                        return f"🚀 Amazing! {int(streak_minutes)} minutes of focused work. You're crushing it!"
+                        return f"Amazing! {int(streak_minutes)} minutes of focused work. You're crushing it!"
         
         # Goal alignment positive feedback (using profile keywords)
         if current_category == "focus" and goal_profile and active_window:
@@ -136,9 +136,9 @@ class NudgeEngine:
                         self.last_category = current_category
                         self.last_nudge_time = now
                         if goal:
-                            return f"✅ Great! You're working on '{goal}'. This aligns with your goal!"
+                            return f"Great! You're working on '{goal}'. This aligns with your goal!"
                         else:
-                            return "✅ Great! You're working on something productive!"
+                            return "Great! You're working on something productive!"
         
         # Reset drift flag when returning to focus
         if current_category == "focus" and self.drift_detected:

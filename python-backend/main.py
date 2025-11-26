@@ -17,6 +17,10 @@ import uvicorn
 from behavior import BehaviorTracker, ActivityEvent, BehaviorStats, DailySummary, NudgeEngine
 from behavior.ai_coach import AICoach
 from profiles import map_goal_to_profile
+from profiles.profile_manager import map_goal_to_profile as map_goal_to_profile_enhanced
+from ai.goal_parser import parse_goal_with_ai
+from ai.daily_report import generate_daily_report
+from nudges.goal_nudges import GoalNudgeEngine
 
 # Platform-specific imports for window monitoring
 if platform.system() == "Darwin":  # macOS
@@ -51,10 +55,15 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-# Initialize behavior tracker and nudge engine (global instances)
+# Initialize behavior tracker and nudge engines (global instances)
 behavior_tracker = BehaviorTracker(enable_persistence=True)
-nudge_engine = NudgeEngine()
+nudge_engine = NudgeEngine()  # Legacy nudge engine
+goal_nudge_engine = GoalNudgeEngine()  # Goal-aware nudge engine
 ai_coach = AICoach()  # AI coaching with Ollama (optional)
+
+# Store last tracked app (for when LifeOS is active)
+last_tracked_app: Optional[str] = None
+last_tracked_category: Optional[str] = None
 
 # Load saved state on startup
 print("Loading saved tracking data...")
@@ -64,6 +73,10 @@ if behavior_tracker.load_state():
     print(f"   - {len(behavior_tracker.events)} events loaded")
     print(f"   - Focus time: {stats.total_focus_minutes:.1f} minutes")
     print(f"   - Current goal: {behavior_tracker.current_goal or 'None'}")
+    # Initialize last tracked app from saved state
+    if behavior_tracker.current_window:
+        last_tracked_app = behavior_tracker.current_window
+        last_tracked_category = behavior_tracker.current_category
 else:
     print("ℹ️  No saved state found, starting fresh")
 
@@ -92,6 +105,9 @@ class ActivityResponse(BaseModel):
     drift: bool = False
     daily_complete: bool = False
     weekly_progress: int = 0
+    last_tracked_app: Optional[str] = None
+    last_tracked_category: Optional[str] = None
+    goal_alignment: Optional[Dict] = None  # Goal alignment metrics
 
 
 class HealthResponse(BaseModel):
@@ -162,32 +178,50 @@ async def health_check():
 @app.options("/goal")
 async def set_goal(request: GoalRequest):
     """
-    Set a goal and map it to a profile.
-    
-    Args:
-        request: GoalRequest with goal text and daily_goal_minutes
-    
-    Returns:
-        Enriched profile dictionary
+    Set a user goal using AI Goal Execution Engine.
+    Parses goal with AI, maps to profile, and activates tracking.
     """
     try:
-        # Map goal to profile
-        profile = map_goal_to_profile(request.goal)
+        print(f"🎯 Setting goal: {request.goal}")
         
-        # Set goal and profile in tracker
-        behavior_tracker.set_goal(request.goal, profile=profile, daily_goal_minutes=request.daily_goal_minutes)
+        # Step 1: Parse goal with AI
+        parsed_goal = parse_goal_with_ai(request.goal)
+        print(f"✅ Parsed goal: {parsed_goal}")
+        
+        # Step 2: Map to enhanced profile
+        profile = map_goal_to_profile_enhanced(parsed_goal, request.goal)
+        print(f"✅ Mapped to profile: {profile.get('profile_name')}")
+        
+        # Step 3: Use daily_goal_minutes from parsed goal or request
+        daily_minutes = parsed_goal.get("target_daily_minutes", request.daily_goal_minutes)
+        
+        # Step 4: Set goal in tracker
+        behavior_tracker.set_goal(
+            request.goal, 
+            profile=profile,
+            daily_goal_minutes=daily_minutes
+        )
+        
+        # Step 5: Save state
+        behavior_tracker.save_state()
+        
+        print(f"✅ Goal set successfully: {request.goal} ({daily_minutes} min/day)")
         
         return {
+            "status": "ok",
             "goal": request.goal,
+            "parsed_goal": parsed_goal,
             "profile": profile,
-            "daily_goal_minutes": request.daily_goal_minutes,
-            "status": "ok"
+            "daily_goal_minutes": daily_minutes
         }
     except Exception as e:
-        print(f"Error in /goal endpoint: {e}")
+        print(f"❌ Error setting goal: {e}")
         import traceback
         traceback.print_exc()
-        return {"status": "error", "error": str(e)}
+        return {
+            "status": "error",
+            "error": str(e)
+        }
 
 
 @app.get("/activity", response_model=ActivityResponse)
@@ -209,16 +243,52 @@ async def get_activity(goal: Optional[str] = None):
             profile = map_goal_to_profile(goal)
             behavior_tracker.set_goal(goal, profile=profile)
         
+        # Check if it's the LifeOS app itself (do this once)
+        # Check for various possible app names
+        active_window_lower = active_window.lower() if active_window else ""
+        is_lifeos_app = any(keyword in active_window_lower for keyword in [
+            "lifeos", "life-os", "life coach", "lifecoach", 
+            "lifecoachagent", "life-coach-agent", "lifecoachagent-desktop"
+        ]) if active_window else False
+        
+        # Global variables to store last tracked app
+        global last_tracked_app, last_tracked_category
+        
         # Record activity in behavior tracker
+        # Skip tracking if LifeOS app itself is active (to avoid tracking itself)
         previous_category = behavior_tracker.get_previous_category()
-        if active_window:
+        if active_window and not is_lifeos_app:
+            # Only record if it's not the LifeOS app itself
             behavior_tracker.record_activity(active_window)
+            # Store the last tracked app and category
+            last_tracked_app = active_window
+            last_tracked_category = behavior_tracker.current_category
         
         # Get current stats
         stats = behavior_tracker.get_stats()
         
-        # Check drift
-        drift = previous_category == "focus" and stats.current_category in ["distraction", "neutral"]
+        # Determine what to show in the UI
+        if is_lifeos_app:
+            # When LifeOS is active, show the last tracked app instead (never show LifeOS name)
+            if last_tracked_app:
+                display_window = last_tracked_app
+                current_category = last_tracked_category if last_tracked_category else "neutral"
+            elif behavior_tracker.current_window:
+                # Fallback to tracker's current window if last_tracked_app not set yet
+                display_window = behavior_tracker.current_window
+                current_category = behavior_tracker.current_category if behavior_tracker.current_category else "neutral"
+            else:
+                # If no tracked app yet, return None so frontend can handle it
+                display_window = None
+                current_category = "neutral"
+            # Don't update drift when LifeOS is active
+            drift = False
+        else:
+            # Normal case - show current app
+            display_window = active_window
+            current_category = stats.current_category or "neutral"
+            # Check drift normally
+            drift = previous_category == "focus" and current_category in ["distraction", "neutral"]
         
         # Check daily completion
         daily_complete = behavior_tracker.check_daily_goal_completion()
@@ -226,24 +296,43 @@ async def get_activity(goal: Optional[str] = None):
         # Get weekly progress
         weekly_progress = behavior_tracker.get_weekly_progress()
         
-        # Generate nudge
-        nudge = nudge_engine.get_nudge(
-            current_category=stats.current_category or "neutral",
-            previous_category=previous_category,
-            current_streak_seconds=stats.current_streak_seconds,
-            goal=behavior_tracker.current_goal,
-            goal_profile=behavior_tracker.current_profile,
-            focus_time_minutes=stats.total_focus_minutes,
-            distraction_time_minutes=stats.total_distraction_minutes,
-            active_window=active_window,
-            daily_complete=daily_complete
-        )
+        # Get goal alignment metrics
+        goal_alignment = behavior_tracker.get_goal_alignment()
+        
+        # Generate nudge (only if not LifeOS app - don't nudge when user is in the app)
+        nudge = None
+        if not is_lifeos_app:
+            # Try goal-aware nudge first (if goal is set)
+            if behavior_tracker.current_goal and behavior_tracker.current_profile:
+                nudge = goal_nudge_engine.get_goal_nudge(
+                    current_category=current_category,
+                    previous_category=previous_category,
+                    current_streak_seconds=stats.current_streak_seconds,
+                    goal=behavior_tracker.current_goal,
+                    goal_profile=behavior_tracker.current_profile,
+                    goal_alignment=goal_alignment,
+                    active_window=display_window
+                )
+            
+            # Fall back to regular nudge if no goal-aware nudge
+            if not nudge:
+                nudge = nudge_engine.get_nudge(
+                    current_category=current_category,
+                    previous_category=previous_category,
+                    current_streak_seconds=stats.current_streak_seconds,
+                    goal=behavior_tracker.current_goal,
+                    goal_profile=behavior_tracker.current_profile,
+                    focus_time_minutes=stats.total_focus_minutes,
+                    distraction_time_minutes=stats.total_distraction_minutes,
+                    active_window=display_window,
+                    daily_complete=daily_complete
+                )
         
         return ActivityResponse(
-            active_window=active_window,
+            active_window=display_window,  # Show last tracked app when LifeOS is active
             platform=platform.system(),
             status="ok",
-            category=stats.current_category,
+            category=current_category,
             focus_time_seconds=stats.total_focus_minutes * 60.0,
             distraction_time_seconds=stats.total_distraction_minutes * 60.0,
             current_streak_seconds=stats.current_streak_seconds,
@@ -255,7 +344,10 @@ async def get_activity(goal: Optional[str] = None):
             profile=behavior_tracker.current_profile,
             drift=drift,
             daily_complete=daily_complete,
-            weekly_progress=weekly_progress
+            weekly_progress=weekly_progress,
+            last_tracked_app=last_tracked_app,
+            last_tracked_category=last_tracked_category,
+            goal_alignment=goal_alignment
         )
     except Exception as e:
         print(f"Error in /activity endpoint: {e}")
@@ -430,6 +522,45 @@ async def get_nudges(goal: Optional[str] = None):
         import traceback
         traceback.print_exc()
         return {"nudge": None}
+
+
+@app.get("/report")
+@app.options("/report")
+async def get_daily_report():
+    """
+    Generate AI-powered daily coaching report using the AI Goal Execution Engine.
+    """
+    try:
+        stats = behavior_tracker.get_stats()
+        
+        # Prepare tracker data for report generation
+        tracker_data = {
+            "stats": {
+                "total_focus_minutes": stats.total_focus_minutes,
+                "total_distraction_minutes": stats.total_distraction_minutes,
+                "current_streak_seconds": stats.current_streak_seconds,
+                "longest_focus_streak_seconds": stats.longest_focus_streak_seconds,
+                "app_switches": stats.app_switches
+            },
+            "goal": behavior_tracker.current_goal,
+            "events": [event.model_dump() for event in behavior_tracker.events[-100:]]  # Last 100 events
+        }
+        
+        # Generate daily report
+        report = generate_daily_report(tracker_data, behavior_tracker.current_profile)
+        
+        return {
+            "status": "ok",
+            "report": report
+        }
+    except Exception as e:
+        print(f"Error generating daily report: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "status": "error",
+            "error": str(e)
+        }
 
 
 class BrowserTabRequest(BaseModel):

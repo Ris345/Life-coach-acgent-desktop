@@ -18,6 +18,14 @@ interface ContextResponse {
   drift?: boolean;
   daily_complete?: boolean;
   weekly_progress?: number;
+  goal_alignment?: {
+    goal_alignment: number;
+    goal_minutes_today: number;
+    required_minutes_today: number;
+    goal_progress_percent: number;
+  } | null;
+  last_tracked_app?: string | null;
+  last_tracked_category?: string | null;
 }
 
 interface BehaviorStats {
@@ -56,6 +64,18 @@ interface DailySummary {
   focus_percentage: number;
 }
 
+interface WeeklyReport {
+  status: string;
+  report?: {
+    celebration: string;
+    insights: string;
+    recommendation: string;
+    motivation: string;
+  };
+  ollama_available?: boolean;
+  error?: string;
+}
+
 interface UseAgentOptions {
   goal?: string | null;
 }
@@ -91,9 +111,9 @@ export function useAgent(options: UseAgentOptions = {}) {
           const activityData: ContextResponse = await activityResponse.json();
           setContext(activityData);
           
-          // Send notification if nudge is present
+          // Send notification if nudge is present (prevent duplicates)
           // This will show as a system notification banner even when app is in background
-          if (activityData.nudge) {
+          if (activityData.nudge && activityData.nudge !== context?.nudge) {
             try {
               await invoke("notify_user", {
                 title: "LifeOS",

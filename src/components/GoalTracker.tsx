@@ -250,8 +250,8 @@ export function GoalTracker({ timeframe, onTrackDay, trackedDays, dailyComplete 
             gap: '0.5rem',
             fontWeight: '600',
           }}>
-            <span style={{ fontSize: '1.1rem' }}>✓</span>
-            <span>Today's goal completed! 🎉</span>
+            <span style={{ fontSize: '1.1rem', fontWeight: '700' }}>✓</span>
+            <span>Today's goal completed</span>
           </div>
         )}
       </div>
@@ -334,12 +334,12 @@ export function GoalTracker({ timeframe, onTrackDay, trackedDays, dailyComplete 
               }}
               title={
                 showAsComplete 
-                  ? 'Goal completed today! ✓' 
+                  ? 'Goal completed today' 
                   : isTracked 
-                    ? 'On track ✓' 
+                    ? 'On track' 
                     : isTodayDate 
                       ? dailyComplete 
-                        ? 'Goal completed! ✓'
+                        ? 'Goal completed'
                         : 'Today - Work in progress'
                       : isPastDate 
                         ? 'Missed' 
@@ -355,11 +355,13 @@ export function GoalTracker({ timeframe, onTrackDay, trackedDays, dailyComplete 
               </div>
               {(showAsComplete || isTracked) && (
                 <div style={{
-                  fontSize: '1rem',
+                  fontSize: '0.75rem',
                   lineHeight: '1',
-                  marginTop: '0.125rem',
+                  marginTop: '0.25rem',
+                  fontWeight: '700',
+                  color: '#fff',
                 }}>
-                  ✓
+                  DONE
                 </div>
               )}
               {isTodayDate && !showAsComplete && !isTracked && (
@@ -462,12 +464,12 @@ export function GoalTracker({ timeframe, onTrackDay, trackedDays, dailyComplete 
             marginBottom: '0.25rem',
           }}>
             {progressPercentage >= 100 
-              ? '🎉 Perfect Week!' 
+              ? 'Perfect Week' 
               : progressPercentage >= 75
-                ? '🔥 Almost There!'
+                ? 'Almost There'
                 : progressPercentage >= 50
-                  ? '💪 Halfway There!'
-                  : '🚀 Keep Going!'}
+                  ? 'Halfway There'
+                  : 'Keep Going'}
           </div>
           <div style={{
             fontSize: '0.8rem',

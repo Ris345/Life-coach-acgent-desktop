@@ -108,7 +108,7 @@ export function Dashboard() {
             color: '#9ca3af',
             fontWeight: '400',
           }}>
-            Your AI-Powered Life Coach
+            AI-Powered Productivity Coach
           </p>
         </div>
         {currentGoal && (
@@ -132,10 +132,10 @@ export function Dashboard() {
       {/* Nudge Banner - Top Priority */}
       {nudge && (
         <div style={{
-          background: nudge.includes('⚠️') || nudge.includes('⏰') 
+          background: nudge.toLowerCase().includes('drift') || nudge.toLowerCase().includes('distraction')
             ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(220, 38, 38, 0.2) 100%)'
             : 'linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.2) 100%)',
-          border: nudge.includes('⚠️') || nudge.includes('⏰')
+          border: nudge.toLowerCase().includes('drift') || nudge.toLowerCase().includes('distraction')
             ? '1px solid rgba(239, 68, 68, 0.4)'
             : '1px solid rgba(16, 185, 129, 0.4)',
           padding: '1.25rem 1.5rem',
@@ -152,7 +152,9 @@ export function Dashboard() {
           backdropFilter: 'blur(10px)',
           animation: 'slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
         }}>
-          <span style={{ flex: 1, lineHeight: '1.5' }}>{nudge}</span>
+          <span style={{ flex: 1, lineHeight: '1.5' }}>
+            {nudge.replace(/[🎯🤖🎉💡💪🚀🔥⚠️⏰✓○]/g, '').trim()}
+          </span>
           <button
             onClick={() => setDismissedNudge(nudge)}
             style={{
@@ -202,38 +204,19 @@ export function Dashboard() {
         }}>
           {!currentGoal ? (
             <>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '1rem',
-                marginBottom: '1.5rem',
-              }}>
-                <div style={{
-                  width: '48px',
-                  height: '48px',
-                  borderRadius: '0.75rem',
-                  background: 'linear-gradient(135deg, #60a5fa 0%, #34d399 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '1.5rem',
+              <div>
+                <h2 style={{ 
+                  fontSize: '1.5rem', 
+                  fontWeight: '700', 
+                  marginBottom: '0.5rem',
+                  color: '#fff',
+                  letterSpacing: '-0.02em',
                 }}>
-                  🎯
-                </div>
-                <div>
-                  <h2 style={{ 
-                    fontSize: '1.5rem', 
-                    fontWeight: '700', 
-                    marginBottom: '0.25rem',
-                    color: '#fff',
-                    letterSpacing: '-0.02em',
-                  }}>
-                    Start Your Journey
-                  </h2>
-                  <p style={{ fontSize: '0.95rem', color: '#9ca3af', margin: 0 }}>
-                    Set a goal to begin tracking your focus and productivity
-                  </p>
-                </div>
+                  Get Started
+                </h2>
+                <p style={{ fontSize: '0.95rem', color: '#9ca3af', marginBottom: '1.5rem', lineHeight: '1.6' }}>
+                  Set your first goal to start tracking your productivity and receive AI-powered coaching insights.
+                </p>
               </div>
               <GoalInput onGoalSubmit={handleGoalSubmit} />
             </>
@@ -270,7 +253,6 @@ export function Dashboard() {
                     <div style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '0.5rem',
                       padding: '0.5rem 1rem',
                       background: 'rgba(59, 130, 246, 0.1)',
                       borderRadius: '0.75rem',
@@ -279,7 +261,6 @@ export function Dashboard() {
                       border: '1px solid rgba(59, 130, 246, 0.3)',
                       fontWeight: '500',
                     }}>
-                      <span>📋</span>
                       {context.profile.profile_name || 'Custom Profile'}
                     </div>
                   )}
@@ -335,6 +316,11 @@ export function Dashboard() {
                   <div style={{ fontSize: '1.75rem', fontWeight: '700', color: '#60a5fa', lineHeight: '1' }}>
                     {isLoading ? '...' : `${Math.round(focusTime)}m`}
                   </div>
+                  {context?.goal_alignment && (
+                    <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                      {context.goal_alignment.goal_minutes_today.toFixed(0)}m toward goal
+                    </div>
+                  )}
                 </div>
                 <div style={{
                   padding: '1rem',
@@ -343,11 +329,16 @@ export function Dashboard() {
                   border: '1px solid rgba(16, 185, 129, 0.2)',
                 }}>
                   <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '600' }}>
-                    Current Streak
+                    Goal Progress
                   </div>
                   <div style={{ fontSize: '1.75rem', fontWeight: '700', color: '#10b981', lineHeight: '1' }}>
-                    {isLoading ? '...' : `${Math.round(currentStreakMinutes)}m`}
+                    {context?.goal_alignment ? `${Math.round(context.goal_alignment.goal_progress_percent)}%` : (isLoading ? '...' : '0%')}
                   </div>
+                  {context?.goal_alignment && (
+                    <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                      {context.goal_alignment.goal_minutes_today.toFixed(0)}/{context.goal_alignment.required_minutes_today}m
+                    </div>
+                  )}
                 </div>
                 <div style={{
                   padding: '1rem',
@@ -364,10 +355,62 @@ export function Dashboard() {
                     color: dailyComplete ? '#10b981' : '#9ca3af',
                     lineHeight: '1',
                   }}>
-                    {dailyComplete ? '✓' : '○'}
+                    {dailyComplete ? 'Complete' : 'In Progress'}
                   </div>
                 </div>
               </div>
+              
+              {/* Goal Alignment Indicator */}
+              {context?.goal_alignment && (
+                <div style={{
+                  marginTop: '1rem',
+                  padding: '1rem',
+                  background: 'rgba(167, 139, 250, 0.1)',
+                  borderRadius: '0.75rem',
+                  border: '1px solid rgba(167, 139, 250, 0.3)',
+                }}>
+                  <div style={{ 
+                    fontSize: '0.75rem', 
+                    color: '#a78bfa', 
+                    marginBottom: '0.5rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    fontWeight: '600',
+                  }}>
+                    Goal Alignment
+                  </div>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1rem',
+                  }}>
+                    <div style={{
+                      flex: 1,
+                      height: '8px',
+                      background: 'rgba(167, 139, 250, 0.2)',
+                      borderRadius: '4px',
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        width: `${context.goal_alignment.goal_alignment}%`,
+                        height: '100%',
+                        background: 'linear-gradient(90deg, #a78bfa 0%, #8b5cf6 100%)',
+                        borderRadius: '4px',
+                        transition: 'width 0.3s ease',
+                      }} />
+                    </div>
+                    <div style={{
+                      fontSize: '0.9rem',
+                      fontWeight: '600',
+                      color: '#a78bfa',
+                      minWidth: '50px',
+                      textAlign: 'right',
+                    }}>
+                      {context.goal_alignment.goal_alignment.toFixed(0)}%
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -439,12 +482,8 @@ export function Dashboard() {
                   fontWeight: '600',
                   color: '#10b981',
                   border: '1px solid rgba(16, 185, 129, 0.3)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
                 }}>
-                  <span>🔥</span>
-                  {Math.round(currentStreakMinutes)}m streak
+                  {Math.round(currentStreakMinutes)}m Focus Streak
                 </div>
               )}
             </div>
@@ -526,10 +565,12 @@ export function Dashboard() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: '1.75rem',
+                fontSize: '1.5rem',
+                fontWeight: '700',
+                color: '#fff',
                 boxShadow: '0 8px 24px rgba(96, 165, 250, 0.3)',
               }}>
-                🤖
+                AI
               </div>
               <div>
                 <h3 style={{ 
@@ -539,18 +580,18 @@ export function Dashboard() {
                   marginBottom: '0.25rem',
                   letterSpacing: '-0.02em',
                 }}>
-                  AI Weekly Report
+                  AI Coaching Report
                 </h3>
                 <p style={{
                   fontSize: '0.9rem',
                   color: '#9ca3af',
                   margin: 0,
                 }}>
-                  Personalized insights powered by AI
+                  Personalized insights and recommendations
                 </p>
               </div>
             </div>
-            {weeklyReport.ollama_available && (
+            {weeklyReport?.ollama_available && (
               <div style={{
                 fontSize: '0.85rem',
                 color: '#10b981',
@@ -559,12 +600,8 @@ export function Dashboard() {
                 borderRadius: '0.75rem',
                 border: '1px solid rgba(16, 185, 129, 0.3)',
                 fontWeight: '600',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
               }}>
-                <span>✨</span>
-                Powered by AI
+                AI Powered
               </div>
             )}
           </div>
@@ -589,15 +626,11 @@ export function Dashboard() {
                   fontWeight: '600',
                   textTransform: 'uppercase',
                   letterSpacing: '0.05em',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
                 }}>
-                  <span>🎉</span>
-                  Celebration
+                  Wins & Achievements
                 </div>
                 <div style={{ fontSize: '1.05rem', color: '#fff', lineHeight: '1.6', fontWeight: '500' }}>
-                  {weeklyReport.report.celebration}
+                  {weeklyReport.report.celebration.replace(/[🎯🤖🎉💡💪🚀🔥⚠️⏰✓○]/g, '').trim()}
                 </div>
               </div>
               
@@ -614,15 +647,11 @@ export function Dashboard() {
                   fontWeight: '600',
                   textTransform: 'uppercase',
                   letterSpacing: '0.05em',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
                 }}>
-                  <span>💡</span>
-                  Insights
+                  Key Insights
                 </div>
                 <div style={{ fontSize: '0.95rem', color: '#fff', lineHeight: '1.6' }}>
-                  {weeklyReport.report.insights}
+                  {weeklyReport.report.insights.replace(/[🎯🤖🎉💡💪🚀🔥⚠️⏰✓○]/g, '').trim()}
                 </div>
               </div>
               
@@ -639,15 +668,11 @@ export function Dashboard() {
                   fontWeight: '600',
                   textTransform: 'uppercase',
                   letterSpacing: '0.05em',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
                 }}>
-                  <span>💪</span>
                   Recommendation
                 </div>
                 <div style={{ fontSize: '0.95rem', color: '#fff', lineHeight: '1.6' }}>
-                  {weeklyReport.report.recommendation}
+                  {weeklyReport.report.recommendation.replace(/[🎯🤖🎉💡💪🚀🔥⚠️⏰✓○]/g, '').trim()}
                 </div>
               </div>
               
@@ -665,15 +690,11 @@ export function Dashboard() {
                   fontWeight: '600',
                   textTransform: 'uppercase',
                   letterSpacing: '0.05em',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
                 }}>
-                  <span>🚀</span>
-                  Motivation
+                  Next Steps
                 </div>
                 <div style={{ fontSize: '1.1rem', color: '#fff', fontWeight: '600', lineHeight: '1.6' }}>
-                  {weeklyReport.report.motivation}
+                  {weeklyReport.report.motivation.replace(/[🎯🤖🎉💡💪🚀🔥⚠️⏰✓○]/g, '').trim()}
                 </div>
               </div>
             </div>
@@ -683,11 +704,20 @@ export function Dashboard() {
               textAlign: 'center',
             }}>
               <div style={{
-                fontSize: '3rem',
-                marginBottom: '1rem',
-                opacity: 0.7,
+                width: '64px',
+                height: '64px',
+                margin: '0 auto 1.5rem',
+                borderRadius: '1rem',
+                background: 'linear-gradient(135deg, #60a5fa 0%, #34d399 50%, #a78bfa 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1.5rem',
+                fontWeight: '700',
+                color: '#fff',
+                boxShadow: '0 8px 24px rgba(96, 165, 250, 0.3)',
               }}>
-                🤖
+                AI
               </div>
               <div style={{
                 fontSize: '1.1rem',
@@ -718,7 +748,7 @@ export function Dashboard() {
                   fontSize: '0.85rem',
                   color: '#a78bfa',
                 }}>
-                  💡 <strong>Tip:</strong> Install Ollama for AI-powered insights. Otherwise, you'll get rule-based coaching.
+                  <strong>Tip:</strong> Install Ollama for AI-powered insights. Otherwise, you'll get rule-based coaching.
                 </div>
               )}
             </div>
@@ -735,12 +765,21 @@ export function Dashboard() {
           border: '2px dashed rgba(59, 130, 246, 0.3)',
           backdropFilter: 'blur(20px)',
         }}>
-          <div style={{ 
-            fontSize: '4rem', 
-            marginBottom: '1.5rem',
-            filter: 'drop-shadow(0 4px 12px rgba(96, 165, 250, 0.3))',
+          <div style={{
+            width: '80px',
+            height: '80px',
+            margin: '0 auto 1.5rem',
+            borderRadius: '1.5rem',
+            background: 'linear-gradient(135deg, #60a5fa 0%, #34d399 50%, #a78bfa 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '2rem',
+            fontWeight: '700',
+            color: '#fff',
+            boxShadow: '0 12px 32px rgba(96, 165, 250, 0.4)',
           }}>
-            🎯
+            LifeOS
           </div>
           <h3 style={{ 
             fontSize: '1.75rem', 

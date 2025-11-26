@@ -51,6 +51,8 @@ class WindowCategorizer:
             "activity monitor", "task manager",
             "calendar", "mail", "messages",  # Can be work or personal
             "safari", "chrome", "firefox", "edge",  # Browsers are neutral by default
+            "lifeos", "life-os", "life coach", "lifecoach",  # LifeOS app itself
+            "lifecoachagent", "life-coach-agent", "lifecoachagent-desktop",  # Alternative app names
         ]
         
         # Compile regex patterns for faster matching
@@ -78,6 +80,13 @@ class WindowCategorizer:
             return "neutral"
         
         window_lower = window_title.lower()
+        
+        # Always categorize LifeOS app itself as neutral (it's the tracking app)
+        if any(keyword in window_lower for keyword in [
+            "lifeos", "life-os", "life coach", "lifecoach", 
+            "lifecoachagent", "life-coach-agent", "lifecoachagent-desktop"
+        ]):
+            return "neutral"
         
         # Profile-based classification (if profile provided)
         if goal_profile:

@@ -112,10 +112,10 @@ Longest Streak: {longest_streak_minutes:.1f} minutes
 Days Completed: {daily_completions}/{total_days}
 
 Top Productive Apps:
-{chr(10).join([f"- {app['app_name']}: {app['total_minutes']:.1f} min" for app in productive_apps[:5]])}
+        {chr(10).join([f"- {app.app_name if hasattr(app, 'app_name') else (app.get('app_name') if isinstance(app, dict) else 'Unknown')}: {(app.total_minutes if hasattr(app, 'total_minutes') else (app.get('total_minutes', 0) if isinstance(app, dict) else 0)):.1f} min" for app in productive_apps[:5]])}
 
 Top Distracting Apps:
-{chr(10).join([f"- {app['app_name']}: {app['total_minutes']:.1f} min" for app in distracting_apps[:5]])}
+{chr(10).join([f"- {app.app_name if hasattr(app, 'app_name') else (app.get('app_name') if isinstance(app, dict) else 'Unknown')}: {(app.total_minutes if hasattr(app, 'total_minutes') else (app.get('total_minutes', 0) if isinstance(app, dict) else 0)):.1f} min" for app in distracting_apps[:5]])}
 """
         
         prompt = f"""You are a life coach analyzing someone's productivity data. Be encouraging, specific, and actionable.
@@ -179,9 +179,9 @@ Format as JSON:
         """Generate a simple fallback report without AI."""
         completion_rate = (daily_completions / total_days * 100) if total_days > 0 else 0
         
-        celebration = f"🎉 You completed your goal {daily_completions} out of {total_days} days this week!"
+        celebration = f"You completed your goal {daily_completions} out of {total_days} days this week!"
         if longest_streak_minutes >= 30:
-            celebration += f" Your longest focus streak was {longest_streak_minutes:.0f} minutes - amazing!"
+            celebration += f" Your longest focus streak was {longest_streak_minutes:.0f} minutes - excellent work!"
         
         insights = f"You focused for {focus_time_minutes/60:.1f} hours this week."
         if distraction_time_minutes > 0:
@@ -194,7 +194,7 @@ Format as JSON:
         elif completion_rate >= 80:
             recommendation = "You're doing great! Consider increasing your daily goal slightly."
         
-        motivation = f"Keep pushing toward '{goal}' - you've got this! 💪"
+        motivation = f"Keep pushing toward '{goal}' - you've got this!"
         
         return {
             "celebration": celebration,
