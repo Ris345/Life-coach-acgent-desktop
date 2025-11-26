@@ -1,137 +1,166 @@
-# Life Coach Agent Desktop
+# LifeOS - AI-Powered Productivity Coach
 
-A desktop application built with Tauri v2 (Rust + React + TypeScript) that runs a Python FastAPI backend as a sidecar process to monitor user activity and provide life coaching insights.
+A desktop application that helps you achieve your goals by tracking your behavior in real-time and providing AI-powered coaching insights.
 
-## Architecture
-
-- **Frontend/Container**: Tauri v2 (Rust + React + TypeScript)
-- **Backend (Sidecar)**: Python FastAPI server running on port 14200
-- **Communication**: HTTP requests from React frontend to Python backend
-
-## Quick Start
+## 🚀 Quick Start
 
 ```bash
 # 1. Install Python dependencies
 cd python-backend
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-# 2. Start the Tauri app (it will automatically start the Python backend)
+# 2. Start the app
 npm run tauri:dev
 ```
 
-Alternatively, you can run the backend manually:
+The app will automatically start the Python backend on port 14200.
 
-```bash
-# Terminal 1: Start backend
-cd python-backend
-python main.py
+## ✨ Features
 
-# Terminal 2: Start Tauri frontend
-npm run tauri:dev
-```
+### AI Goal Execution Engine
+- **Natural Language Goals**: Just type "study AWS for 1 hour daily" and the AI understands
+- **Real-Time Tracking**: Automatically tracks what you're doing every 2 seconds
+- **Goal Alignment**: Shows how aligned your behavior is with your goals
+- **Smart Nudges**: Gets notified when you drift from your goals (even when app is closed)
+- **AI Coaching**: Weekly personalized reports with insights and recommendations
 
-## Project Structure
+### How It Works
+
+1. **Set a Goal**: Type your goal in natural language (e.g., "study AWS for 1 hour daily")
+2. **AI Parses It**: Extracts category, topic, time requirements, and maps to a productivity profile
+3. **Tracks Behavior**: Monitors active apps/windows and categorizes them (focus/distraction/neutral)
+4. **Intervenes**: Sends nudges when you drift or celebrates milestones
+5. **Coaches**: Generates weekly AI reports with personalized insights
+
+## 📁 Project Structure
 
 ```
 .
-├── python-backend/          # Python FastAPI sidecar
-│   ├── main.py              # FastAPI server with /health and /context endpoints
-│   └── requirements.txt     # Python dependencies
-├── src-tauri/               # Tauri Rust application
-│   ├── src/
-│   │   ├── main.rs          # Rust code that spawns Python process
-│   │   └── build.rs         # Tauri build script
-│   ├── Cargo.toml           # Rust dependencies
-│   └── tauri.conf.json      # Tauri configuration
+├── python-backend/          # FastAPI backend
+│   ├── main.py              # API server
+│   ├── behavior/            # Behavior tracking engine
+│   │   ├── tracker.py       # Core tracking logic
+│   │   ├── categorizer.py   # App categorization
+│   │   ├── nudges.py        # Nudge generation
+│   │   └── ai_coach.py      # AI coaching reports
+│   ├── ai/                  # AI modules
+│   │   ├── goal_parser.py   # Goal parsing (Ollama + rule-based)
+│   │   └── daily_report.py  # Daily report generation
+│   ├── profiles/            # Productivity profiles
+│   │   ├── profiles.py      # Built-in profiles
+│   │   └── profile_manager.py # Goal-to-profile mapping
+│   └── nudges/              # Nudge engines
+│       └── goal_nudges.py   # Goal-aware nudges
+├── src-tauri/               # Tauri (Rust) app container
 └── src/                     # React frontend
-    ├── App.tsx              # Main React component
-    ├── hooks/
-    │   └── useAgent.ts      # Hook that polls backend API
-    └── ...
+    ├── components/
+    │   ├── Dashboard.tsx    # Main dashboard
+    │   ├── GoalTracker.tsx  # Progress tracker
+    │   └── MetricsOverview.tsx
+    └── hooks/
+        └── useAgent.ts      # Backend API hook
 ```
 
-## Python Backend
+## 🎯 API Endpoints
 
-The Python backend (`python-backend/main.py`) provides:
+### Core Endpoints
+- `GET /activity` - Get current activity and behavior data (polled every 2s)
+- `POST /goal` - Set a goal (triggers AI parsing and profile mapping)
+- `GET /stats` - Get behavior statistics
+- `GET /summary` - Get daily summary with top apps
+- `GET /weekly_report` - Get AI coaching report
+- `GET /report` - Get daily AI report
 
-- **GET /health**: Health check endpoint
-- **GET /context**: Returns current active window/application
-  - Uses `pygetwindow` on Windows
-  - Uses `AppKit` (pyobjc) on macOS
-  - Returns platform and status information
+### Example: Setting a Goal
 
-### Running Backend
+```bash
+curl -X POST http://127.0.0.1:14200/goal \
+  -H "Content-Type: application/json" \
+  -d '{"goal": "study AWS for 1 hour daily", "daily_goal_minutes": 60}'
+```
 
-The backend is automatically started by the Tauri app, but you can also run it manually:
+## 🔧 Development
+
+### Prerequisites
+- Python 3.10+
+- Node.js 18+
+- Rust (latest stable)
+- Tauri CLI: `npm install -g @tauri-apps/cli`
+
+### Running Backend Manually
 
 ```bash
 cd python-backend
-pip install -r requirements.txt
+source venv/bin/activate
 python main.py
 ```
 
-## Rust Process Management
-
-The Rust code in `src-tauri/src/main.rs`:
-
-1. **Finds Python executable** (python3, python, or py)
-2. **Spawns Python process** when Tauri app starts
-3. **Logs stdout/stderr** from Python process for debugging
-4. **Kills Python process** when Tauri window closes
-
-### Key Features
-
-- Automatic Python executable detection
-- Process stdout/stderr logging to Rust console
-- Graceful shutdown on window close
-- Error handling if Python backend fails to start
-
-## React Frontend
-
-- Modern UI with gradient design
-- `useAgent` hook that polls `/context` every 2 seconds
-- Displays current active window and platform info
-- Error handling and loading states
-
-## Development
-
-### Prerequisites
-
-- Python 3.10+
-- Rust (latest stable)
-- Node.js 18+
-- Tauri CLI: `cargo install tauri-cli` or `npm install -g @tauri-apps/cli`
-
-### Development Scripts
+### Running Frontend Only
 
 ```bash
-# Start Tauri app (automatically starts Python backend)
 npm run tauri:dev
-
-# Build for production
-npm run tauri:build
 ```
 
-## Notes
+## 🧠 AI Features
 
-- The Python backend runs on port **14200** to avoid conflicts
-- CORS is configured to allow requests from `localhost` and Tauri's protocol
-- The Rust process manager logs all Python output to help with debugging
-- On macOS, you may need to grant accessibility permissions for window monitoring
+### Goal Parser
+- Uses Ollama (local LLM) if available, falls back to rule-based parsing
+- Extracts: category, topic, target time, focus/distraction apps
+- Example: "study AWS for 1 hour daily" → learning category, AWS topic, 60 min/day
 
-## Troubleshooting
+### Goal Alignment Tracking
+- Tracks time spent in goal-aligned apps
+- Calculates alignment percentage (0-100%)
+- Shows progress toward daily goal
+
+### Smart Nudges
+- Drift detection: "You drifted from 'Study AWS'. Want to refocus?"
+- Streak milestones: "10-minute AWS streak. Building momentum."
+- Progress updates: "You're 80% toward today's goal."
+- Goal achieved: "Daily goal achieved — excellent consistency!"
+
+### AI Coaching Reports
+- Weekly personalized insights
+- Celebrates wins and achievements
+- Identifies patterns and distractions
+- Provides actionable recommendations
+
+## 📊 Data Persistence
+
+Behavior data is automatically saved to:
+- **macOS**: `~/Library/Application Support/LifeOS/data.json`
+- **Windows**: `%APPDATA%\LifeOS\data.json`
+- **Linux**: `~/.local/share/LifeOS/data.json`
+
+Data persists across app restarts.
+
+## 🔐 Privacy
+
+- All processing is local (no cloud dependency)
+- Optional Ollama integration for AI features (runs locally)
+- No data sent to external servers
+- Behavior data stored locally only
+
+## 🐛 Troubleshooting
 
 ### Backend not starting
-- Check if port 14200 is available: `lsof -i :14200`
-- Check Python installation: `python3 --version`
-- Ensure dependencies are installed: `pip install -r python-backend/requirements.txt`
+- Check port 14200: `lsof -i :14200`
+- Ensure Python dependencies installed: `pip install -r requirements.txt`
 
 ### Window monitoring not working
 - **macOS**: Grant accessibility permissions in System Preferences > Security & Privacy > Privacy > Accessibility
-- **Windows**: Ensure pygetwindow is installed: `pip install pygetwindow`
-- **Linux**: Window monitoring requires additional setup (xdotool or similar)
+- **Windows**: Install pygetwindow: `pip install pygetwindow`
 
-### Tauri build errors
-- Ensure Rust is installed: `rustc --version`
-- Ensure Tauri CLI is installed
-- Check `src-tauri/Cargo.toml` for correct dependencies
+### AI features not working
+- Ollama is optional - app works with rule-based fallback
+- To enable AI: Install Ollama and run `ollama pull llama3.1`
+
+## 📝 License
+
+[Add your license here]
+
+## 🤝 Contributing
+
+[Add contribution guidelines]
