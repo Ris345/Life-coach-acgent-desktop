@@ -157,6 +157,44 @@ CREATE INDEX IF NOT EXISTS idx_metrics_user_id ON public.metrics(user_id);
 CREATE INDEX IF NOT EXISTS idx_metrics_user_id_type ON public.metrics(user_id, metric_type);
 CREATE INDEX IF NOT EXISTS idx_metrics_user_id_recorded_at ON public.metrics(user_id, recorded_at DESC);
 
+-- Analytics events table
+CREATE TABLE IF NOT EXISTS public.analytics_events (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  session_id TEXT, -- For anonymous/unauthenticated users
+  event_type TEXT NOT NULL, -- 'page_view', 'button_click', etc.
+  route TEXT, -- Current route/page
+  element_id TEXT, -- Button ID, element ID, or event name
+  metadata JSONB DEFAULT '{}'::jsonb, -- Additional flexible data
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Enable RLS on analytics_events
+ALTER TABLE public.analytics_events ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Users can only insert their own events
+CREATE POLICY "Users can insert own analytics events"
+  ON public.analytics_events FOR INSERT
+  WITH CHECK (
+    (user_id IS NULL OR auth.uid() = user_id) OR
+    (user_id IS NULL AND session_id IS NOT NULL)
+  );
+
+-- Policy: Users can view their own events
+CREATE POLICY "Users can view own analytics events"
+  ON public.analytics_events FOR SELECT
+  USING (
+    (user_id IS NULL AND session_id IS NOT NULL) OR
+    (user_id IS NOT NULL AND auth.uid() = user_id)
+  );
+
+-- Create indexes for faster queries
+CREATE INDEX IF NOT EXISTS idx_analytics_events_user_id ON public.analytics_events(user_id) WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_analytics_events_session_id ON public.analytics_events(session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_analytics_events_event_type ON public.analytics_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_route ON public.analytics_events(route) WHERE route IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_analytics_events_created_at ON public.analytics_events(created_at DESC);
+
 -- Function to automatically update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$

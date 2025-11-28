@@ -64,3 +64,16 @@ supabase-service-key.txt
 auth-tokens.json
 session.json
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+analytics.db
+
+# Debug and documentation files
+*DEBUG*.md
+*SETUP*.md
+*FIX*.md
+*GUIDE*.md
+*DIAGNOSTIC*.md
+debug_*.py

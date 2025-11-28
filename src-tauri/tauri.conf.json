@@ -39,6 +39,12 @@
       "icons/512x512.png",
       "icons/512x512@2x.png"
     ]
+  },
+  "plugins": {
+    "deep-link": {
+      "schemes": [
+        "lifeos"
+      ]
+    }
   }
 }
-

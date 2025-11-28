@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { trackButtonClick, trackPageView } from '../utils/analytics';
 
 export function Login() {
   const { signInWithGoogle, signInWithEmail, isLoading } = useAuth();
@@ -8,7 +9,13 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const [showEmailForm, setShowEmailForm] = useState(false);
 
+  // Track page view on mount
+  React.useEffect(() => {
+    trackPageView('/login');
+  }, []);
+
   const handleGoogleSignIn = async () => {
+    trackButtonClick('google_sign_in_button');
     try {
       setError(null);
       console.log('🔄 Starting Google sign-in...');
@@ -27,6 +34,7 @@ export function Login() {
 
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    trackButtonClick('email_submit_button');
     try {
       setError(null);
       if (!email || !password) {
@@ -38,6 +46,7 @@ export function Login() {
       setError(err instanceof Error ? err.message : 'Failed to sign in with email');
     }
   };
+
 
   return (
     <div style={{
@@ -137,7 +146,10 @@ export function Login() {
             </div>
 
             <button
-              onClick={() => setShowEmailForm(true)}
+              onClick={() => {
+                trackButtonClick('email_sign_in_button');
+                setShowEmailForm(true);
+              }}
               style={{
                 width: '100%',
                 padding: '0.75rem',

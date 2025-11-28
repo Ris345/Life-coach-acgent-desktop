@@ -10,11 +10,11 @@ if (!rootElement) {
   throw new Error("Root element not found");
 }
 
-const root = ReactDOM.createRoot(rootElement);
+    const root = ReactDOM.createRoot(rootElement);
 
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+    root.render(
+      <React.StrictMode>
+        <App />
+      </React.StrictMode>
+    );
 

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { trackButtonClick } from '../utils/analytics';
 
 export type Timeframe = 'day' | 'week' | 'month';
 
@@ -13,6 +14,11 @@ export function GoalInput({ onGoalSubmit }: GoalInputProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (goal.trim()) {
+      // Track button click
+      trackButtonClick('set_goal_button', {
+        timeframe: timeframe,
+      });
+      
       onGoalSubmit(goal.trim(), timeframe);
       setGoal('');
     }

@@ -1,4 +1,5 @@
 import { Timeframe } from './GoalInput';
+import { trackButtonClick } from '../utils/analytics';
 
 interface GoalTrackerProps {
   timeframe: Timeframe;
@@ -126,7 +127,15 @@ export function GoalTracker({ timeframe, onTrackDay, trackedDays }: GoalTrackerP
           return (
             <button
               key={index}
-              onClick={() => onTrackDay(index)}
+              onClick={() => {
+                // Track day tracking click
+                trackButtonClick('track_day', {
+                  day_index: index,
+                  is_tracked: isTracked,
+                  timeframe: timeframe,
+                });
+                onTrackDay(index);
+              }}
               disabled={isPastDate && !isTracked}
               style={{
                 aspectRatio: '1',
