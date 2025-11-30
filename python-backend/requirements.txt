@@ -7,3 +7,4 @@ pyobjc; sys_platform == "darwin"
 supabase==2.0.0
 email-validator==2.1.0
 python-dotenv==1.0.0
+google-generativeai>=0.8.0

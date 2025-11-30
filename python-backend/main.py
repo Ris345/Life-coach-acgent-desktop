@@ -26,6 +26,7 @@ import glob
 from db import get_supabase_client, get_sqlite_connection, close_sqlite_connection
 from services.analytics_service import init_analytics_table, create_analytics_event
 from services.user_service import get_user_by_email, create_user
+from services.database_service import get_database_service
 from models.analytics import AnalyticsEventCreate, AnalyticsEventResponse
 from models.user import UserCreate
 from uuid import uuid4
@@ -54,11 +55,18 @@ else:
 
 
 
+# Import Orchestrator
+from core.orchestrator import Orchestrator
+
+# Global Orchestrator instance
+orchestrator = Orchestrator()
+
 # Lifespan context manager for startup/shutdown events
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifecycle - startup and shutdown."""
     # Startup
+    
     # Initialize SQLite analytics table
     try:
         init_analytics_table()
@@ -66,39 +74,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠️ Warning: Could not initialize analytics table: {e}")
     
-    # Initialize Supabase client (for user operations)
+    # Initialize Supabase client
     try:
         supabase = get_supabase_client()
         if supabase:
             print("✅ Supabase client ready for user operations")
-        else:
-            print("⚠️ Warning: Supabase not configured - user operations will fail")
     except Exception as e:
         print(f"⚠️ Warning: Could not initialize Supabase: {e}")
     
-    # Start the background tracking thread
-    tracking_thread = threading.Thread(target=track_application_usage, daemon=True)
-    tracking_thread.start()
-    print("✅ Application usage tracking started")
-    
-    # Pre-populate app_usage with installed applications
-    try:
-        installed_apps = get_installed_applications()
-        with tracking_lock:
-            for app in installed_apps:
-                app_name = app["name"]
-                if app_name not in app_usage:
-                    app_usage[app_name] = {"visits": 0, "total_seconds": 0.0}
-        print(f"✅ Pre-populated tracking for {len(installed_apps)} installed applications")
-    except Exception as e:
-        print(f"⚠️ Warning: Could not pre-populate installed applications: {e}")
+    # Start Orchestrator (which starts all agents)
+    await orchestrator.start()
     
     yield
     
     # Shutdown
-    global _tracking_active
-    _tracking_active = False
-    print("Application usage tracking stopped")
+    await orchestrator.stop()
     
     # Close SQLite connection
     try:
@@ -108,10 +98,10 @@ async def lifespan(app: FastAPI):
         print(f"Error closing SQLite connection: {e}")
 
 
-app = FastAPI(title="LifeOS Sidecar", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="LifeOS Sidecar", version="2.0.0", lifespan=lifespan)
 
 
-# CORS configuration - allow frontend and Tauri origins
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -127,21 +117,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Application usage tracking
-# Structure: {app_name: {visits: count, total_seconds: time}}
-app_usage: Dict[str, Dict[str, float]] = defaultdict(lambda: {"visits": 0, "total_seconds": 0.0})
-current_app: Optional[str] = None
-app_start_time: Optional[float] = None
-tracking_lock = threading.Lock()
-tracking_active = False
-
-# Chrome tab usage tracking
-# Structure: {url: {visits: count, total_seconds: time, last_title: str}}
-tab_usage: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"visits": 0, "total_seconds": 0.0, "last_title": ""})
-last_active_app: Optional[str] = None
-last_active_tab_url: Optional[str] = None
-
 
 class ActivityResponse(BaseModel):
     """Response model for activity endpoint."""
@@ -546,12 +521,13 @@ async def get_usage_counts_endpoint():
 
 
 @app.get("/api/metrics/applications")
-def get_application_metrics():
+async def get_application_metrics():
     """
     Get comprehensive application usage metrics.
     Returns a list of applications sorted by total time spent.
     """
-    detailed_usage = get_usage_detailed()
+    detailed_usage = await orchestrator.get_metrics()
+    context_switches = await orchestrator.get_context_switches()
     
     metrics = []
     for app_name, data in detailed_usage.items():
@@ -573,12 +549,13 @@ def get_application_metrics():
     return {
         "metrics": metrics,
         "total_applications": len(metrics),
+        "context_switches": context_switches,
         "status": "ok"
     }
 
 
 @app.get("/api/chrome/tabs")
-def get_chrome_tabs():
+async def get_chrome_tabs():
     """
     Get a list of all open Google Chrome tabs using JXA (JavaScript for Automation).
     Only works on macOS.
@@ -587,70 +564,12 @@ def get_chrome_tabs():
     if platform.system() != "Darwin":
         return {"tabs": [], "error": "Only supported on macOS"}
         
-    jxa_script = """
-    try {
-        const chrome = Application('Google Chrome');
-        const windows = chrome.windows();
-        const allTabs = [];
-        
-        windows.forEach((w, wIndex) => {
-            w.tabs().forEach(t => {
-                allTabs.push({
-                    title: t.title(),
-                    url: t.url(),
-                    windowId: wIndex
-                });
-            });
-        });
-        
-        JSON.stringify(allTabs);
-    } catch (e) {
-        JSON.stringify({error: e.toString()});
-    }
-    """
+    tabs_data = await orchestrator.get_chrome_tabs()
     
-    try:
-        result = subprocess.run(
-            ["osascript", "-l", "JavaScript", "-e", jxa_script],
-            capture_output=True,
-            text=True
-        )
+    # Sort by total time descending
+    tabs_data.sort(key=lambda x: x["total_time"], reverse=True)
         
-        if result.returncode != 0:
-            print(f"Error running JXA: {result.stderr}")
-            return {"tabs": [], "error": "Failed to fetch tabs"}
-            
-        output = result.stdout.strip()
-        if not output:
-            return {"tabs": []}
-            
-        data = json.loads(output)
-        if isinstance(data, dict) and "error" in data:
-             # Check if it's a "Application isn't running" error
-            if "Error: Application isn't running" in data["error"]:
-                 return {"tabs": []}
-            return {"tabs": [], "error": data["error"]}
-            
-        # Merge with usage data
-        enriched_tabs = []
-        for tab in data:
-            url = tab.get("url", "")
-            usage = tab_usage.get(url, {"total_seconds": 0, "visits": 0})
-            
-            enriched_tabs.append({
-                **tab,
-                "total_time": usage["total_seconds"],
-                "visits": usage["visits"]
-            })
-            
-        # Sort by total time descending
-        enriched_tabs.sort(key=lambda x: x["total_time"], reverse=True)
-            
-        return {"tabs": enriched_tabs}
-        
-    except Exception as e:
-        print(f"Error fetching Chrome tabs: {e}")
-        return {"tabs": [], "error": str(e)}
+    return {"tabs": tabs_data}
 
 
 @app.post("/usage/reset")
@@ -944,6 +863,276 @@ async def google_user_login(user_data: GoogleUserLogin):
                 "picture": user_data.picture,
             },
             "message": "User logged in successfully (local only)"
+        }
+
+
+# ==================== USER AND GOAL MANAGEMENT ====================
+
+db_service = get_database_service()
+
+@app.post("/api/user/set")
+async def set_current_user(user_data: dict):
+    """
+    Set current user for tracking and load their historical data.
+    """
+    user_id = user_data.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    
+    # Set user in DataCollectorAgent
+    orchestrator.data_collector.set_user(user_id)
+    
+    return {"status": "ok", "message": f"User {user_id} set successfully"}
+
+@app.post("/api/goals/set")
+async def set_user_goal(goal_data: dict):
+    """
+    Save user goal to local database and send to orchestrator for LLM analysis.
+    """
+    user_id = goal_data.get("user_id")
+    goal_text = goal_data.get("goal")
+    timeframe = goal_data.get("timeframe", "week")
+    
+    if not user_id or not goal_text:
+        raise HTTPException(status_code=400, detail="user_id and goal are required")
+    
+    # Save to local database
+    goal = db_service.save_goal(user_id, goal_text, timeframe)
+    
+    # Also send to orchestrator for LLM analysis
+    await orchestrator.set_goal(goal_text)
+    
+    return {
+        "status": "ok",
+        "goal": goal,
+        "message": "Goal saved successfully"
+    }
+
+@app.get("/api/goals/current")
+async def get_current_goal(user_id: str):
+    """
+    Get user's current active goal from local database.
+    """
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    
+    goal = db_service.get_current_goal(user_id)
+    
+    return {
+        "status": "ok",
+        "goal": goal
+    }
+
+
+# ==================== SMART NUDGE ENDPOINTS ====================
+
+@app.get("/api/nudge/settings")
+async def get_nudge_settings(user_id: str):
+    """
+    Get user's Smart Nudge enabled status.
+    """
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    
+    enabled = db_service.get_nudge_settings(user_id)
+    
+    return {
+        "status": "ok",
+        "enabled": enabled
+    }
+
+@app.post("/api/nudge/settings")
+async def update_nudge_settings(settings_data: dict):
+    """
+    Update user's Smart Nudge enabled status.
+    """
+    user_id = settings_data.get("user_id")
+    enabled = settings_data.get("enabled", False)
+    
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    
+    db_service.set_nudge_settings(user_id, enabled)
+    
+    return {
+        "status": "ok",
+        "message": f"Smart Nudge {'enabled' if enabled else 'disabled'}"
+    }
+
+@app.get("/api/nudge/check")
+async def check_nudge_status(user_id: str):
+    """
+    Check if a nudge is needed for the user.
+    Called periodically by frontend when Smart Nudge is enabled.
+    """
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    
+    try:
+        # Get user's goal
+        goal = db_service.get_current_goal(user_id)
+        
+        # Get current metrics
+        chrome_tabs = await orchestrator.get_chrome_tabs()
+        app_metrics = await orchestrator.get_metrics()
+        context_switches = await orchestrator.get_context_switches()
+        
+        # Categorize tabs for analysis
+        job_sites = ["linkedin.com", "indeed.com", "glassdoor.com"]
+        learning_sites = ["leetcode.com", "coursera.org", "udemy.com"]
+        entertainment_sites = ["youtube.com", "netflix.com", "reddit.com"]
+        
+        job_time = sum(tab.get("total_time", 0) for tab in chrome_tabs if any(site in tab.get("url", "").lower() for site in job_sites))
+        learning_time = sum(tab.get("total_time", 0) for tab in chrome_tabs if any(site in tab.get("url", "").lower() for site in learning_sites))
+        entertainment_time = sum(tab.get("total_time", 0) for tab in chrome_tabs if any(site in tab.get("url", "").lower() for site in entertainment_sites))
+        
+        # Prepare metrics for nudge agent
+        metrics = {
+            "chrome_tabs": chrome_tabs,
+            "app_metrics": app_metrics,
+            "context_switches": context_switches,
+            "tab_analysis": {
+                "job_search_time": job_time,
+                "learning_time": learning_time,
+                "entertainment_time": entertainment_time
+            }
+        }
+        
+        # Check with Smart Nudge Agent
+        nudge_result = await orchestrator.smart_nudge_agent.process({
+            "user_id": user_id,
+            "goal": goal,
+            "metrics": metrics
+        })
+        
+        return {
+            "status": "ok",
+            "nudge": nudge_result
+        }
+    except Exception as e:
+        print(f"Error checking nudge status: {e}")
+        return {
+            "status": "ok",
+            "nudge": {"nudge_needed": False}
+        }
+
+
+@app.get("/api/probability/calculate")
+async def calculate_success_probability(user_id: Optional[str] = None):
+    """
+    Calculate success probability based on user's goal and behavior.
+    Analyzes Chrome tabs, application usage, and behavior patterns.
+    Returns probability score with detailed explanation.
+    """
+    try:
+        # Get user's current goal from database
+        current_goal = None
+        if user_id:
+            goal_data = db_service.get_current_goal(user_id)
+            if goal_data:
+                current_goal = goal_data.get("goal_text")
+        
+        # If no goal found, use default
+        if not current_goal:
+            current_goal = "achieve success in your career"
+        
+        # Get Chrome tabs data
+        chrome_tabs = await orchestrator.get_chrome_tabs()
+        
+        # Get application usage metrics
+        app_metrics = await orchestrator.get_metrics()
+        
+        # Get context switches
+        context_switches = await orchestrator.get_context_switches()
+        
+        # Categorize tabs
+        job_sites = ["linkedin.com", "indeed.com", "glassdoor.com", "monster.com", "ziprecruiter.com", "hired.com", "angel.co", "wellfound.com"]
+        learning_sites = ["coursera.org", "udemy.com", "leetcode.com", "hackerrank.com", "codecademy.com", "freecodecamp.org", "udacity.com", "pluralsight.com", "educative.io", "stackoverflow.com", "github.com", "developer.mozilla.org", "w3schools.com"]
+        entertainment_sites = ["youtube.com", "netflix.com", "reddit.com", "twitter.com", "instagram.com", "facebook.com", "tiktok.com", "twitch.tv"]
+        
+        job_time = 0
+        learning_time = 0
+        entertainment_time = 0
+        other_time = 0
+        
+        for tab in chrome_tabs:
+            url = tab.get("url", "").lower()
+            time_spent = tab.get("total_time", 0)
+            
+            if any(site in url for site in job_sites):
+                job_time += time_spent
+            elif any(site in url for site in learning_sites):
+                learning_time += time_spent
+            elif any(site in url for site in entertainment_sites):
+                entertainment_time += time_spent
+            else:
+                other_time += time_spent
+        
+        total_time = job_time + learning_time + entertainment_time + other_time
+        
+        # Create goal analysis based on user's actual goal
+        goal_analysis = {
+            "goal": current_goal,
+            "skills": ["Goal-relevant skills", "Time management", "Focus", "Consistency"],
+            "estimated_weeks": 12
+        }
+        
+        # Prepare input for ProbabilityAgent
+        probability_input = {
+            "goal_analysis": goal_analysis,
+            "user_metrics": app_metrics,
+            "chrome_tabs": chrome_tabs,
+            "tab_analysis": {
+                "job_search_time": job_time,
+                "learning_time": learning_time,
+                "entertainment_time": entertainment_time,
+                "other_time": other_time,
+                "total_time": total_time,
+                "productive_ratio": (job_time + learning_time) / total_time if total_time > 0 else 0
+            },
+            "context_switches": context_switches
+        }
+        
+        # Calculate probability using ProbabilityAgent
+        probability_result = await orchestrator.probability_agent.process(probability_input)
+        
+        # Add tab analysis to response
+        probability_result["tab_breakdown"] = {
+            "job_search_minutes": round(job_time / 60, 1),
+            "learning_minutes": round(learning_time / 60, 1),
+            "entertainment_minutes": round(entertainment_time / 60, 1),
+            "productive_percentage": round((job_time + learning_time) / total_time * 100, 1) if total_time > 0 else 0
+        }
+        
+        # Add the goal to the response
+        probability_result["goal"] = current_goal
+        
+        return {
+            "probability": probability_result,
+            "status": "ok"
+        }
+        
+    except Exception as e:
+        print(f"Error calculating probability: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return fallback response
+        return {
+            "probability": {
+                "score": 0.0,
+                "explanation": "Unable to calculate probability. Please ensure you have some browsing activity tracked.",
+                "positive_factors": [],
+                "negative_factors": ["Insufficient data"],
+                "confidence": "low",
+                "goal": current_goal if current_goal else "No goal set",
+                "tab_breakdown": {
+                    "job_search_minutes": 0,
+                    "learning_minutes": 0,
+                    "entertainment_minutes": 0,
+                    "productive_percentage": 0
+                }
+            },
+            "status": "ok"
         }
 
 
