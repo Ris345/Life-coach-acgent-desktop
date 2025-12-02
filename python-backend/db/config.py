@@ -25,9 +25,8 @@ if not SUPABASE_SERVICE_ROLE_KEY:
     SUPABASE_SERVICE_ROLE_KEY = SUPABASE_ANON_KEY
 
 # SQLite configuration
-# Store analytics database in the backend directory
-BACKEND_DIR = Path(__file__).parent.parent
-SQLITE_DB_PATH = BACKEND_DIR / "analytics.db"
+# Store analytics database in user home directory (same as DatabaseService)
+SQLITE_DB_PATH = Path.home() / ".lifecoach" / "user_data.db"
 
 # Ensure backend directory exists
 BACKEND_DIR.mkdir(parents=True, exist_ok=True)

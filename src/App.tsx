@@ -2,25 +2,27 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Login } from './components/Login';
 import { Dashboard } from './components/Dashboard';
 import { AuthCallback } from './pages/AuthCallback';
+import { Onboarding } from './components/Onboarding';
+import { Overlay } from './windows/Overlay';
+import { AppLayout } from './components/layout/AppLayout';
+import { GoalLibrary } from './components/GoalLibrary';
+import { AgentAnalytics } from './components/AgentAnalytics';
 import { useEffect, useState } from 'react';
 import { trackPageView } from './utils/analytics';
 
 function AppContent() {
-  const { isAuthenticated, user, signOut, isLoading } = useAuth();
+  const { isAuthenticated, user, isLoading } = useAuth();
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
 
   // Debug: Log authentication state changes
   useEffect(() => {
-    console.log('🔍 Auth state:', { 
-      isAuthenticated, 
-      hasUser: !!user, 
+    console.log('🔍 Auth state:', {
+      isAuthenticated,
+      hasUser: !!user,
       userEmail: user?.email,
-      isLoading 
+      isLoading
     });
   }, [isAuthenticated, user, isLoading]);
-
-  // OAuth completion is now handled in AuthContext by polling the backend
-  // No need for localStorage listeners here
 
   // Handle route changes (for callback page)
   useEffect(() => {
@@ -49,69 +51,45 @@ function AppContent() {
     return <AuthCallback />;
   }
 
+  // Overlay Window Route
+  if (currentPath === '/overlay') {
+    return <Overlay />;
+  }
+
   // Show loading only if not authenticated (to avoid blocking dashboard)
   if (isLoading && !isAuthenticated) {
     return (
-      <div style={{
-        width: '100vw',
-        height: '100vh',
-        background: '#1a1d29',
-        color: '#ffffff',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontFamily: 'system-ui, sans-serif',
-      }}>
-        <div>Loading...</div>
+      <div className="min-h-screen w-full bg-zinc-950 text-white flex items-center justify-center font-sans">
+        <div className="animate-pulse">Loading...</div>
       </div>
     );
   }
 
-  // If authenticated, show dashboard immediately
+  // If authenticated, check onboarding status
   if (isAuthenticated && user) {
-    return (
-      <div style={{
-        width: '100vw',
-        height: '100vh',
-        background: '#1a1d29',
-        color: '#ffffff',
-        padding: '2rem',
-        fontFamily: 'system-ui, sans-serif',
-        overflowY: 'auto',
-      }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '2rem',
-        }}>
-          <div>
-            <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🧠 Life Coach Agent</h1>
-            <p style={{ color: '#888', fontSize: '0.9rem' }}>
-              Welcome, {user?.name || user?.email}!
-            </p>
-          </div>
-          <button
-            onClick={signOut}
-            style={{
-              padding: '0.5rem 1rem',
-              background: '#3b82f6',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '0.5rem',
-              cursor: 'pointer',
-              fontSize: '0.9rem',
-              transition: 'background 0.2s',
-            }}
-            onMouseOver={(e) => e.currentTarget.style.background = '#2563eb'}
-            onMouseOut={(e) => e.currentTarget.style.background = '#3b82f6'}
-          >
-            Sign Out
-          </button>
-        </div>
+    if (!user.onboarding_completed) {
+      return <Onboarding />;
+    }
 
-        <Dashboard />
-      </div>
+    const renderContent = () => {
+      switch (currentPath) {
+        case '/goals':
+          return <GoalLibrary />;
+        case '/analytics':
+          return <AgentAnalytics />;
+        case '/coaching':
+          return <div className="p-8 text-zinc-500">Coaching Coming Soon</div>;
+        case '/settings':
+          return <div className="p-8 text-zinc-500">Settings Coming Soon</div>;
+        default:
+          return <Dashboard />;
+      }
+    };
+
+    return (
+      <AppLayout>
+        {renderContent()}
+      </AppLayout>
     );
   }
 

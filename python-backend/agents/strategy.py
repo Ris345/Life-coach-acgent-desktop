@@ -1,25 +1,25 @@
 from typing import Any, Dict, List
 from agents.base import BaseAgent
-from services.gemini_service import get_gemini_service
+from services.openai_service import get_openai_service
 
 class SuccessStrategyAgent(BaseAgent):
     """
     Agent responsible for generating success strategies.
-    Creates weekly plans and daily tasks using Gemini.
+    Creates weekly plans and daily tasks using OpenAI.
     """
     
     def __init__(self):
         super().__init__("SuccessStrategyAgent")
-        self.gemini = None
+        self.openai = None
 
     async def start(self):
-        """Initialize Gemini service on start."""
+        """Initialize OpenAI service on start."""
         await super().start()
         try:
-            self.gemini = get_gemini_service()
-            print(f"✅ {self.name} initialized with Gemini")
+            self.openai = get_openai_service()
+            print(f"✅ {self.name} initialized with OpenAI")
         except Exception as e:
-            print(f"⚠️ Warning: {self.name} could not initialize Gemini: {e}")
+            print(f"⚠️ Warning: {self.name} could not initialize OpenAI: {e}")
 
     async def process(self, input_data: Any) -> Any:
         """
@@ -35,8 +35,8 @@ class SuccessStrategyAgent(BaseAgent):
         probability = input_data.get("probability", {})
         user_metrics = input_data.get("user_metrics", {})
         
-        if not self.gemini:
-            print("⚠️ Gemini not available, returning placeholder data")
+        if not self.openai:
+            print("⚠️ OpenAI not available, returning placeholder data")
             return self._get_placeholder_response()
         
         try:
@@ -67,30 +67,24 @@ Create a comprehensive strategy that includes:
 Return your response as a JSON object with this structure:
 {{
     "weekly_plan": [
-        {{"week": 1, "focus": "...", "goals": ["goal1", "goal2"]}},
-        ...
-    ],
-    "daily_tasks": [
-        {{"task": "...", "duration_minutes": 30, "priority": "high/medium/low"}},
-        ...
+        {{"week": 1, "theme": "...", "days": [
+            {{"day": 1, "focus": "...", "tasks": [{{"task": "...", "type": "coding/learning/project", "estimated_minutes": 60}}]}}
+        ]}}
     ],
     "recommendations": [
-        {{"area": "...", "suggestion": "...", "impact": "high/medium/low"}},
-        ...
+        {{"area": "...", "suggestion": "...", "impact": "high/medium/low"}}
     ],
-    "time_allocation": {{
-        "learning": 120,
-        "practice": 90,
-        "review": 30
-    }}
+    "resources": [
+        {{"title": "Resource Title", "url": "https://...", "type": "video/article/tool/course", "description": "Why this helps..."}}
+    ]
 }}"""
 
-            response = await self.gemini.generate_structured_content(prompt, temperature=0.7)
+            response = await self.openai.generate_structured_content(prompt, temperature=0.7)
             
             return response
             
         except Exception as e:
-            print(f"❌ Error generating strategy with Gemini: {e}")
+            print(f"❌ Error generating strategy with OpenAI: {e}")
             return self._get_placeholder_response()
     
     def _format_goal(self, goal_analysis: Dict) -> str:

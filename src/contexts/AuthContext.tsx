@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { Store } from "@tauri-apps/plugin-store";
 import { invoke } from "@tauri-apps/api/core";
+import { getSupabaseClient } from "../lib/supabase";
 
 interface User {
   id: string;
@@ -9,6 +10,9 @@ interface User {
   picture?: string;
   provider: "google" | "email";
   supabaseUserId?: string; // Supabase user ID from backend
+  onboarding_completed?: boolean;
+  access_token?: string;
+  refresh_token?: string;
 }
 
 interface AuthContextType {
@@ -17,7 +21,9 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (email: string, password: string, name: string) => Promise<{ session: boolean }>;
   isAuthenticated: boolean;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,13 +40,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     loadSession();
+
+    const supabase = getSupabaseClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log(`🔐 Auth state change: ${event}`);
+
+      if (session?.user) {
+        // Update store with new session/tokens
+        const normalized: User = {
+          id: session.user.id,
+          email: session.user.email || "",
+          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || "",
+          provider: (session.user.app_metadata?.provider as any) || 'email',
+          supabaseUserId: session.user.id,
+          onboarding_completed: session.user.user_metadata?.onboarding_completed,
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+        };
+
+        // We don't call saveSession here to avoid infinite loops if saveSession triggers updates
+        // Instead we just update the store and state directly
+        const store = await initStore();
+        await store.set(STORE_KEY, normalized);
+        await store.save();
+        setUser(normalized);
+        setIsLoading(false);
+      } else if (event === 'SIGNED_OUT') {
+        const store = await initStore();
+        await store.delete(STORE_KEY);
+        await store.save();
+        setUser(null);
+        setIsLoading(false);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   async function loadSession() {
     try {
       const store = await initStore();
       const saved = await store.get<User>(STORE_KEY);
-      if (saved) setUser(saved);
+      if (saved) {
+        // Restore Supabase session if tokens exist
+        if (saved.access_token && saved.refresh_token) {
+          const supabase = getSupabaseClient();
+          const { error } = await supabase.auth.setSession({
+            access_token: saved.access_token,
+            refresh_token: saved.refresh_token,
+          });
+          if (error) {
+            console.error("❌ Failed to restore session:", error);
+            // If restore fails, clear store
+            await store.delete(STORE_KEY);
+            await store.save();
+            setUser(null);
+            return;
+          }
+        }
+        setUser(saved);
+      }
+    } catch (e) {
+      console.error("Failed to load session:", e);
     } finally {
       setIsLoading(false);
     }
@@ -50,6 +113,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const store = await initStore();
     await store.set(STORE_KEY, u);
     await store.save();
+
+    // Ensure Supabase client has the session
+    if (u.access_token && u.refresh_token) {
+      const supabase = getSupabaseClient();
+      await supabase.auth.setSession({
+        access_token: u.access_token,
+        refresh_token: u.refresh_token,
+      });
+    }
+
     // Set user state - this will trigger re-render and show Dashboard
     setUser(u);
     setIsLoading(false); // Explicitly set loading to false
@@ -183,6 +256,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const backendUser = await backendLoginRes.json();
       console.log("✅ User logged into desktop app backend:", backendUser.message);
 
+      // NOTE: For Google Auth via backend, we might not get a Supabase session token directly
+      // unless the backend returns one. If the backend is just creating a user record,
+      // we might need to rely on a custom token or just trust the backend.
+      // However, for consistency, let's assume we are using Supabase Auth.
+      // If the backend returns a session, we should use it.
+      // For now, we'll store what we have. If we need a Supabase session, we might need to exchange tokens.
+
       const normalized: User = {
         id: googleUser.id,
         email: googleUser.email,
@@ -190,6 +270,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         picture: googleUser.picture,
         provider: "google",
         supabaseUserId: backendUser.user?.id, // Store Supabase user ID
+        // We don't have Supabase tokens here unless the backend returns them.
+        // This might be a limitation of the current Google Auth flow implementation.
       };
 
       console.log("💾 Saving session...");
@@ -213,22 +295,106 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function signInWithEmail(email: string, _password: string) {
+  async function refreshUser() {
     try {
-      setIsLoading(true);
+      const supabase = getSupabaseClient();
+      const { data: { session }, error } = await supabase.auth.getSession();
 
-      // In production, this would call your backend API
-      // For now, we'll create a simple session
-      const mockUser: User = {
-        id: `email_${Date.now()}`,
-        email: email,
-        name: email.split('@')[0],
-        provider: 'email',
+      if (error || !session || !session.user) {
+        console.error("Failed to refresh user:", error);
+        return;
+      }
+
+      const supabaseUser = session.user;
+
+      const normalized: User = {
+        id: supabaseUser.id,
+        email: supabaseUser.email || "",
+        name: supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0] || "",
+        provider: (supabaseUser.app_metadata?.provider as any) || 'email',
+        supabaseUserId: supabaseUser.id,
+        onboarding_completed: supabaseUser.user_metadata?.onboarding_completed,
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
       };
 
-      await saveSession(mockUser);
-    } catch (error) {
+      await saveSession(normalized);
+    } catch (err) {
+      console.error("Error refreshing user:", err);
+    }
+  }
+
+  async function signInWithEmail(email: string, password: string) {
+    try {
+      setIsLoading(true);
+      const supabase = getSupabaseClient();
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+      if (!data.user || !data.session) throw new Error("No user/session returned from Supabase");
+
+      const normalized: User = {
+        id: data.user.id,
+        email: data.user.email || email,
+        name: data.user.user_metadata?.name || email.split('@')[0],
+        provider: 'email',
+        supabaseUserId: data.user.id,
+        onboarding_completed: data.user.user_metadata?.onboarding_completed,
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      };
+
+      await saveSession(normalized);
+    } catch (error: any) {
       console.error('Email sign-in failed:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function signUpWithEmail(email: string, password: string, name: string): Promise<{ session: boolean }> {
+    try {
+      setIsLoading(true);
+      const supabase = getSupabaseClient();
+
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name: name,
+            onboarding_completed: false,
+          },
+        },
+      });
+
+      if (error) throw error;
+      if (!data.user) throw new Error("No user returned from Supabase");
+
+      if (data.session) {
+        const normalized: User = {
+          id: data.user.id,
+          email: data.user.email || email,
+          name: name,
+          provider: 'email',
+          supabaseUserId: data.user.id,
+          onboarding_completed: false,
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+        };
+        await saveSession(normalized);
+        return { session: true };
+      } else {
+        return { session: false };
+      }
+
+    } catch (error) {
+      console.error('Email sign-up failed:', error);
       throw error;
     } finally {
       setIsLoading(false);
@@ -239,6 +405,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const store = await initStore();
     await store.delete(STORE_KEY);
     await store.save();
+    const supabase = getSupabaseClient();
+    await supabase.auth.signOut();
     setUser(null);
   }
 
@@ -249,8 +417,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         signInWithGoogle,
         signInWithEmail,
+        signUpWithEmail,
         signOut,
         isAuthenticated: !!user,
+        refreshUser
       }}
     >
       {children}

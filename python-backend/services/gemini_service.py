@@ -10,7 +10,20 @@ import json
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+# Get the absolute path to the project root (one level up from python-backend)
+current_dir = os.path.dirname(os.path.abspath(__file__)) # services/
+backend_dir = os.path.dirname(current_dir) # python-backend/
+project_root = os.path.dirname(backend_dir) # life-coach-agent/
+env_path = os.path.join(project_root, '.env')
+
+print(f"📂 Loading .env from: {env_path}")
+load_dotenv(env_path)
+
+# Debug print
+if os.getenv("GEMINI_API_KEY"):
+    print("✅ GEMINI_API_KEY found in environment")
+else:
+    print("❌ GEMINI_API_KEY NOT found in environment")
 
 class GeminiService:
     """
@@ -129,8 +142,49 @@ class GeminiService:
             print(f"Response was: {response_text}")
             raise
         except Exception as e:
+            if "429" in str(e):
+                print(f"⚠️ Gemini API Quota Exceeded (429). Using fallback data.")
+                # Check if this is a strategy generation request
+                if "strategy" in prompt.lower() or "plan" in prompt.lower():
+                    return self._get_fallback_strategy()
+                # Check if this is a probability request
+                elif "probability" in prompt.lower() or "chance" in prompt.lower():
+                    return self._get_fallback_probability()
+            
             print(f"Error generating structured content: {e}")
             raise
+
+    def _get_fallback_strategy(self) -> Dict[str, Any]:
+        """Return a realistic fallback strategy when API is rate limited."""
+        return {
+            "overview": "⚠️ API Quota Exceeded. Showing example plan for 'Learn Python'. This is a comprehensive roadmap designed to take you from beginner to job-ready.",
+            "weekly_plan": [
+                {
+                    "week": 1,
+                    "theme": "Python Basics & Setup",
+                    "days": [
+                        {"day": 1, "focus": "Environment Setup", "tasks": [{"task": "Install Python & VS Code", "type": "setup", "estimated_minutes": 30}, {"task": "Run 'Hello World'", "type": "coding", "estimated_minutes": 15}]},
+                        {"day": 2, "focus": "Variables & Data Types", "tasks": [{"task": "Learn strings, integers, floats", "type": "learning", "estimated_minutes": 45}, {"task": "Practice type conversion", "type": "coding", "estimated_minutes": 30}]},
+                        {"day": 3, "focus": "Control Flow", "tasks": [{"task": "If/Else statements", "type": "learning", "estimated_minutes": 45}, {"task": "Build a simple calculator", "type": "project", "estimated_minutes": 60}]}
+                    ]
+                },
+                {
+                    "week": 2,
+                    "theme": "Data Structures",
+                    "days": [
+                        {"day": 1, "focus": "Lists & Tuples", "tasks": [{"task": "List methods (append, pop)", "type": "learning", "estimated_minutes": 45}, {"task": "Solve 3 list problems", "type": "coding", "estimated_minutes": 45}]},
+                        {"day": 2, "focus": "Dictionaries", "tasks": [{"task": "Key-value pairs", "type": "learning", "estimated_minutes": 45}, {"task": "Build a contact book", "type": "project", "estimated_minutes": 60}]}
+                    ]
+                }
+            ]
+        }
+
+    def _get_fallback_probability(self) -> Dict[str, Any]:
+        """Return a realistic fallback probability when API is rate limited."""
+        return {
+            "score": 0.75,
+            "explanation": "⚠️ API Quota Exceeded. Based on your recent high focus time and consistent activity, you have a strong chance of success. Keep up the momentum!"
+        }
 
 
 # Global instance (singleton pattern)

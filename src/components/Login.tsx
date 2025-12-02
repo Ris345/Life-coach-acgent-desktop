@@ -3,11 +3,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { trackButtonClick, trackPageView } from '../utils/analytics';
 
 export function Login() {
-  const { signInWithGoogle, signInWithEmail, isLoading } = useAuth();
+  const { signInWithGoogle, signInWithEmail, signUpWithEmail, isLoading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [showEmailForm, setShowEmailForm] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
 
   // Track page view on mount
   React.useEffect(() => {
@@ -25,88 +28,118 @@ export function Login() {
       console.error('❌ Google sign-in error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to sign in with Google';
       setError(errorMessage);
-      // Also show alert for critical errors
       if (errorMessage.includes('not configured') || errorMessage.includes('Client ID')) {
         alert(errorMessage);
       }
     }
   };
 
-  const handleEmailSignIn = async (e: React.FormEvent) => {
+  const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    trackButtonClick('email_submit_button');
+    trackButtonClick(isSignUp ? 'email_sign_up_button' : 'email_sign_in_button');
     try {
       setError(null);
       if (!email || !password) {
         setError('Please enter both email and password');
         return;
       }
-      await signInWithEmail(email, password);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sign in with email');
+      if (isSignUp && !name) {
+        setError('Please enter your name');
+        return;
+      }
+
+      if (isSignUp) {
+        const result = await signUpWithEmail(email, password, name);
+        if (!result.session) {
+          setShowConfirmation(true);
+        }
+      } else {
+        await signInWithEmail(email, password);
+      }
+    } catch (err: any) {
+      console.error("Auth Error:", err);
+      const message = (err.message || err.error_description || JSON.stringify(err)).toLowerCase();
+
+      if (message.includes("email not confirmed") || message.includes("email address not confirmed")) {
+        setShowConfirmation(true);
+        return;
+      }
+
+      if (message.includes("user already registered")) {
+        setError("Account already exists. Please sign in.");
+        setIsSignUp(false);
+        return;
+      }
+
+      if (message.includes("invalid login credentials")) {
+        setError("Invalid email or password.");
+        return;
+      }
+
+      setError(err.message || "Authentication failed");
     }
   };
 
-
   return (
-    <div style={{
-      width: '100vw',
-      height: '100vh',
-      background: '#1a1d29',
-      color: '#ffffff',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontFamily: 'system-ui, sans-serif',
-    }}>
-      <div style={{
-        background: '#252936',
-        padding: '3rem',
-        borderRadius: '1rem',
-        maxWidth: '400px',
-        width: '100%',
-        boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)',
-      }}>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🧠 Life Coach Agent</h1>
-          <p style={{ color: '#888', fontSize: '0.9rem' }}>Sign in to continue</p>
+    <div className="min-h-screen w-full bg-zinc-950 text-white flex items-center justify-center font-sans">
+      <div className="bg-zinc-900 p-12 rounded-2xl max-w-md w-full shadow-2xl border border-zinc-800">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold mb-2">🧠 Life Coach Agent</h1>
+          <p className="text-zinc-400 text-sm">
+            {showConfirmation ? 'Check your email' : (isSignUp ? 'Create an account to get started' : 'Sign in to continue')}
+          </p>
         </div>
 
         {error && (
-          <div style={{
-            background: '#ff4444',
-            color: '#fff',
-            padding: '0.75rem',
-            borderRadius: '0.5rem',
-            marginBottom: '1rem',
-            fontSize: '0.9rem',
-          }}>
+          <div className="bg-red-500/10 border border-red-500/50 text-red-200 p-3 rounded-lg mb-4 text-sm">
             {error}
           </div>
         )}
 
-        {!showEmailForm ? (
+        {showConfirmation ? (
+          <div className="text-center">
+            <div className="text-5xl mb-4">✉️</div>
+            <p className="mb-6 text-zinc-300 leading-relaxed">
+              We've sent a confirmation link to <strong className="text-white">{email}</strong>.<br />
+              Please check your inbox to verify your account.
+            </p>
+
+            <button
+              onClick={async () => {
+                try {
+                  setError(null);
+                  await signInWithEmail(email, password);
+                } catch (err: any) {
+                  const message = err.message || err.error_description || JSON.stringify(err);
+                  if (message.includes("Email not confirmed") || message.includes("email not confirmed")) {
+                    setError("Email still not confirmed. Please check your inbox.");
+                  } else {
+                    setError(message);
+                    setShowConfirmation(false);
+                  }
+                }
+              }}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors mb-4"
+            >
+              I've verified my email
+            </button>
+
+            <button
+              onClick={() => {
+                setShowConfirmation(false);
+                setIsSignUp(false);
+              }}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+            >
+              Back to Sign In
+            </button>
+          </div>
+        ) : !showEmailForm ? (
           <>
             <button
               onClick={handleGoogleSignIn}
               disabled={isLoading}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                background: '#4285f4',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '0.5rem',
-                fontSize: '1rem',
-                fontWeight: '500',
-                cursor: isLoading ? 'not-allowed' : 'pointer',
-                marginBottom: '1rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-                opacity: isLoading ? 0.6 : 1,
-              }}
+              className="w-full py-3 bg-[#4285f4] hover:bg-[#3367d6] text-white rounded-lg font-medium transition-colors mb-4 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 'Signing in...'
@@ -135,14 +168,10 @@ export function Login() {
               )}
             </button>
 
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              margin: '1.5rem 0',
-            }}>
-              <div style={{ flex: 1, height: '1px', background: '#444' }} />
-              <span style={{ padding: '0 1rem', color: '#888', fontSize: '0.9rem' }}>OR</span>
-              <div style={{ flex: 1, height: '1px', background: '#444' }} />
+            <div className="flex items-center my-6">
+              <div className="flex-1 h-px bg-zinc-700" />
+              <span className="px-4 text-zinc-500 text-sm">OR</span>
+              <div className="flex-1 h-px bg-zinc-700" />
             </div>
 
             <button
@@ -150,118 +179,86 @@ export function Login() {
                 trackButtonClick('email_sign_in_button');
                 setShowEmailForm(true);
               }}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                background: 'transparent',
-                color: '#fff',
-                border: '1px solid #444',
-                borderRadius: '0.5rem',
-                fontSize: '1rem',
-                cursor: 'pointer',
-              }}
+              className="w-full py-3 bg-transparent border border-zinc-700 hover:border-zinc-500 text-white rounded-lg font-medium transition-colors"
             >
               Continue with Email
             </button>
           </>
         ) : (
-          <form onSubmit={handleEmailSignIn}>
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{
-                display: 'block',
-                marginBottom: '0.5rem',
-                fontSize: '0.9rem',
-                color: '#ccc',
-              }}>
-                Email
-              </label>
+          <form onSubmit={handleEmailAuth} className="space-y-4">
+            {isSignUp && (
+              <div>
+                <label className="block mb-2 text-sm text-zinc-400">Name</label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Your Name"
+                  required={isSignUp}
+                  className="w-full p-3 bg-zinc-950 border border-zinc-800 rounded-lg text-white focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block mb-2 text-sm text-zinc-400">Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="your@email.com"
                 required
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  background: '#1a1d29',
-                  color: '#fff',
-                  border: '1px solid #444',
-                  borderRadius: '0.5rem',
-                  fontSize: '1rem',
-                  boxSizing: 'border-box',
-                }}
+                className="w-full p-3 bg-zinc-950 border border-zinc-800 rounded-lg text-white focus:outline-none focus:border-blue-500 transition-colors"
               />
             </div>
 
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{
-                display: 'block',
-                marginBottom: '0.5rem',
-                fontSize: '0.9rem',
-                color: '#ccc',
-              }}>
-                Password
-              </label>
+            <div>
+              <label className="block mb-2 text-sm text-zinc-400">Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 required
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  background: '#1a1d29',
-                  color: '#fff',
-                  border: '1px solid #444',
-                  borderRadius: '0.5rem',
-                  fontSize: '1rem',
-                  boxSizing: 'border-box',
-                }}
+                className="w-full p-3 bg-zinc-950 border border-zinc-800 rounded-lg text-white focus:outline-none focus:border-blue-500 transition-colors"
               />
             </div>
 
             <button
               type="submit"
               disabled={isLoading}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                background: '#3b82f6',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '0.5rem',
-                fontSize: '1rem',
-                fontWeight: '500',
-                cursor: isLoading ? 'not-allowed' : 'pointer',
-                marginBottom: '1rem',
-                opacity: isLoading ? 0.6 : 1,
-              }}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {isLoading ? 'Signing in...' : 'Sign In'}
+              {isLoading ? 'Processing...' : (isSignUp ? 'Sign Up' : 'Sign In')}
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setShowEmailForm(false);
-                setEmail('');
-                setPassword('');
-                setError(null);
-              }}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                background: 'transparent',
-                color: '#888',
-                border: 'none',
-                fontSize: '0.9rem',
-                cursor: 'pointer',
-              }}
-            >
-              ← Back to sign in options
-            </button>
+            <div className="flex justify-between items-center mt-4 pt-4 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEmailForm(false);
+                  setEmail('');
+                  setPassword('');
+                  setName('');
+                  setError(null);
+                  setIsSignUp(false);
+                }}
+                className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
+              >
+                ← Back
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
+                  setError(null);
+                }}
+                className="text-blue-500 hover:text-blue-400 text-sm transition-colors"
+              >
+                {isSignUp ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}
+              </button>
+            </div>
           </form>
         )}
       </div>

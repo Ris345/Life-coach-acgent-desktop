@@ -5,11 +5,14 @@ from agents.researcher import ResearchAgent
 from agents.probability import ProbabilityAgent
 from agents.strategy import SuccessStrategyAgent
 from agents.smart_nudge import SmartNudgeAgent
+from agents.morning_briefing import MorningBriefingAgent
+from agents.flow_agent import FlowAgent
+from services.correlation_service import CorrelationService
 
 class Orchestrator:
     """
     Central brain of the Agentic Desktop System.
-    Coordinates 5 specialized agents and manages data flow.
+    Coordinates specialized agents and manages data flow.
     """
     
     def __init__(self):
@@ -18,13 +21,21 @@ class Orchestrator:
         self.probability_agent = ProbabilityAgent()
         self.strategy_agent = SuccessStrategyAgent()
         self.smart_nudge_agent = SmartNudgeAgent()
+        self.morning_briefing_agent = MorningBriefingAgent()
+        self.flow_agent = FlowAgent()
+        self.correlation_service = CorrelationService()
+        
+        # Inject dependencies into SmartNudgeAgent
+        self.smart_nudge_agent.set_dependencies(self.data_collector, self.flow_agent)
         
         self.agents = [
             self.data_collector,
             self.researcher,
             self.probability_agent,
             self.strategy_agent,
-            self.smart_nudge_agent
+            self.smart_nudge_agent,
+            self.morning_briefing_agent,
+            self.flow_agent
         ]
         
         self.system_state = {
@@ -117,3 +128,20 @@ class Orchestrator:
     async def get_context_switches(self):
         """Get context switch count from DataCollector."""
         return await self.data_collector.process("get_context_switches")
+
+    async def get_morning_briefing(self, user_id: str, goal: Dict[str, Any]):
+        """Get morning briefing from MorningBriefingAgent."""
+        return await self.morning_briefing_agent.process({
+            "user_id": user_id,
+            "goal": goal
+        })
+
+    async def get_user_stats(self, user_id: str):
+        """Get user gamification stats."""
+        from services.database_service import get_database_service
+        db = get_database_service()
+        return db.get_user_stats(user_id)
+
+    def get_active_nudge(self):
+        """Get current active nudge from SmartNudgeAgent."""
+        return self.smart_nudge_agent.active_nudge

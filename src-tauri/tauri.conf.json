@@ -20,6 +20,20 @@
         "fullscreen": false,
         "visible": true,
         "center": true
+      },
+      {
+        "label": "overlay",
+        "title": "LifeOS Overlay",
+        "width": 400,
+        "height": 200,
+        "resizable": false,
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "skipTaskbar": true,
+        "url": "/overlay"
       }
     ],
     "security": {

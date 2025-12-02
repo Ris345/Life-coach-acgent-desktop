@@ -15,6 +15,8 @@ import type {
   UpdateGoalInput,
   RecordProgressInput,
   RecordMetricInput,
+} from '../types/database';
+import {
   DatabaseError,
   ValidationError,
 } from '../types/database';
@@ -39,8 +41,8 @@ export function initSupabase(accessToken?: string): SupabaseClient {
 
   const client = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
-      persistSession: false, // We'll handle auth separately
-      autoRefreshToken: false,
+      persistSession: true,
+      autoRefreshToken: true,
     },
   });
 
@@ -105,17 +107,17 @@ export async function createGoal(
 
     const startDate = new Date(data.start_date);
     const endDate = new Date(data.end_date);
-    
+
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       throw new ValidationError('Invalid date format', 'dates');
     }
-    
+
     if (endDate < startDate) {
       throw new ValidationError('End date must be after start date', 'end_date');
     }
 
     const client = getSupabaseClient();
-    
+
     const { data: goal, error } = await client
       .from('goals')
       .insert({
@@ -157,7 +159,7 @@ export async function createGoal(
 export async function getGoals(userId: string): Promise<Goal[]> {
   try {
     const client = getSupabaseClient();
-    
+
     const { data: goals, error } = await client
       .from('goals')
       .select('*')
@@ -189,7 +191,7 @@ export async function getGoals(userId: string): Promise<Goal[]> {
 export async function getGoal(goalId: string, userId: string): Promise<Goal | null> {
   try {
     const client = getSupabaseClient();
-    
+
     const { data: goal, error } = await client
       .from('goals')
       .select('*')
@@ -238,14 +240,14 @@ export async function updateGoal(
     if (data.start_date || data.end_date) {
       const startDate = data.start_date ? new Date(data.start_date) : null;
       const endDate = data.end_date ? new Date(data.end_date) : null;
-      
+
       if (startDate && isNaN(startDate.getTime())) {
         throw new ValidationError('Invalid start date format', 'start_date');
       }
       if (endDate && isNaN(endDate.getTime())) {
         throw new ValidationError('Invalid end date format', 'end_date');
       }
-      
+
       // If both dates are provided, validate range
       if (startDate && endDate && endDate < startDate) {
         throw new ValidationError('End date must be after start date', 'end_date');
@@ -258,7 +260,7 @@ export async function updateGoal(
     }
 
     const client = getSupabaseClient();
-    
+
     const updateData: any = {};
     if (data.title !== undefined) updateData.title = data.title.trim();
     if (data.timeframe !== undefined) updateData.timeframe = data.timeframe;
@@ -305,7 +307,7 @@ export async function updateGoal(
 export async function deleteGoal(goalId: string, userId: string): Promise<void> {
   try {
     const client = getSupabaseClient();
-    
+
     const { error } = await client
       .from('goals')
       .delete()
@@ -360,7 +362,7 @@ export async function recordProgress(
     const progressDate = new Date(data.date);
     const startDate = new Date(goal.start_date);
     const endDate = new Date(goal.end_date);
-    
+
     if (progressDate < startDate || progressDate > endDate) {
       throw new ValidationError(
         `Date must be within goal date range (${goal.start_date} to ${goal.end_date})`,
@@ -369,7 +371,7 @@ export async function recordProgress(
     }
 
     const client = getSupabaseClient();
-    
+
     // Use upsert to update if exists, insert if not
     const { data: progress, error } = await client
       .from('goal_progress')
@@ -421,7 +423,7 @@ export async function getGoalProgress(
     }
 
     const client = getSupabaseClient();
-    
+
     const { data: progress, error } = await client
       .from('goal_progress')
       .select('*')
@@ -463,7 +465,7 @@ export async function deleteProgress(
     }
 
     const client = getSupabaseClient();
-    
+
     const { error } = await client
       .from('goal_progress')
       .delete()
@@ -508,7 +510,7 @@ export async function recordMetric(
     }
 
     const client = getSupabaseClient();
-    
+
     const { data: metric, error } = await client
       .from('metrics')
       .insert({
@@ -557,7 +559,7 @@ export async function getMetrics(
 ): Promise<Metric[]> {
   try {
     const client = getSupabaseClient();
-    
+
     let query = client
       .from('metrics')
       .select('*')
@@ -640,7 +642,7 @@ export async function getOrCreateUser(
 ): Promise<User> {
   try {
     const client = getSupabaseClient();
-    
+
     // Try to get existing user
     const { data: existingUser, error: fetchError } = await client
       .from('users')

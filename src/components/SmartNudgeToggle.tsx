@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Zap } from 'lucide-react';
 
 interface SmartNudgeToggleProps {
     enabled: boolean;
@@ -13,70 +14,32 @@ export function SmartNudgeToggle({ enabled, onToggle }: SmartNudgeToggleProps) {
     };
 
     return (
+
         <div
-            style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '1rem',
-                background: enabled
-                    ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-                    : 'rgba(255, 255, 255, 0.05)',
-                borderRadius: '12px',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease',
-                transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
-                boxShadow: isHovered
-                    ? '0 8px 16px rgba(0, 0, 0, 0.2)'
-                    : '0 4px 8px rgba(0, 0, 0, 0.1)',
-            }}
+            className={`
+                flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all duration-300 transform
+                ${enabled
+                    ? 'bg-gradient-to-br from-indigo-500 to-purple-600 border-transparent shadow-lg shadow-indigo-500/30'
+                    : 'bg-white/5 border-white/10 hover:bg-white/10'}
+                ${isHovered ? '-translate-y-0.5 shadow-xl' : 'translate-y-0'}
+            `}
             onClick={handleToggle}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
-            <div style={{ flex: 1 }}>
-                <div
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        marginBottom: '0.25rem',
-                    }}
-                >
-                    <span style={{ fontSize: '1.25rem' }}>🤖</span>
-                    <span
-                        style={{
-                            fontSize: '1rem',
-                            fontWeight: '600',
-                            color: '#fff',
-                        }}
-                    >
+            <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                    <Zap size={20} className={enabled ? 'text-white' : 'text-zinc-400'} />
+                    <span className="text-base font-semibold text-white">
                         Smart Nudge
                     </span>
                     {enabled && (
-                        <span
-                            style={{
-                                fontSize: '0.7rem',
-                                padding: '0.15rem 0.5rem',
-                                background: 'rgba(255, 255, 255, 0.2)',
-                                borderRadius: '12px',
-                                color: '#fff',
-                                fontWeight: '500',
-                            }}
-                        >
+                        <span className="text-[10px] px-2 py-0.5 bg-white/20 rounded-full text-white font-medium">
                             ACTIVE
                         </span>
                     )}
                 </div>
-                <p
-                    style={{
-                        fontSize: '0.85rem',
-                        color: enabled ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.6)',
-                        margin: 0,
-                        lineHeight: '1.4',
-                    }}
-                >
+                <p className={`text-sm m-0 leading-snug ${enabled ? 'text-white/90' : 'text-white/60'}`}>
                     {enabled
                         ? 'AI will help you stay focused by closing distractions'
                         : 'Enable AI to help you stay on track with your goals'}
@@ -84,30 +47,14 @@ export function SmartNudgeToggle({ enabled, onToggle }: SmartNudgeToggleProps) {
             </div>
 
             {/* Toggle Switch */}
-            <div
-                style={{
-                    position: 'relative',
-                    width: '52px',
-                    height: '28px',
-                    background: enabled ? '#4ade80' : 'rgba(255, 255, 255, 0.2)',
-                    borderRadius: '14px',
-                    transition: 'background 0.3s ease',
-                    marginLeft: '1rem',
-                }}
-            >
-                <div
-                    style={{
-                        position: 'absolute',
-                        top: '2px',
-                        left: enabled ? '26px' : '2px',
-                        width: '24px',
-                        height: '24px',
-                        background: '#fff',
-                        borderRadius: '50%',
-                        transition: 'left 0.3s ease',
-                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
-                    }}
-                />
+            <div className={`
+                relative w-[52px] h-[28px] rounded-full transition-colors duration-300 ml-4
+                ${enabled ? 'bg-green-400' : 'bg-white/20'}
+            `}>
+                <div className={`
+                    absolute top-[2px] w-[24px] h-[24px] bg-white rounded-full transition-all duration-300 shadow-sm
+                    ${enabled ? 'left-[26px]' : 'left-[2px]'}
+                `} />
             </div>
         </div>
     );

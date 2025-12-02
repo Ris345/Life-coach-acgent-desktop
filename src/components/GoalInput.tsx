@@ -18,63 +18,33 @@ export function GoalInput({ onGoalSubmit }: GoalInputProps) {
       trackButtonClick('set_goal_button', {
         timeframe: timeframe,
       });
-      
+
       onGoalSubmit(goal.trim(), timeframe);
       setGoal('');
     }
   };
 
   return (
-    <div style={{
-      background: '#252936',
-      padding: '1.5rem',
-      borderRadius: '0.75rem',
-      marginBottom: '1.5rem',
-    }}>
-      <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: '600' }}>
+    <div className="bg-zinc-900 p-6 rounded-xl mb-6 border border-zinc-800 shadow-lg">
+      <h3 className="mb-4 text-lg font-semibold text-white">
         Set Your Goal
       </h3>
       <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: '1rem' }}>
+        <div className="mb-4">
           <textarea
             value={goal}
             onChange={(e) => setGoal(e.target.value)}
             placeholder="What do you want to achieve?"
-            style={{
-              width: '100%',
-              minHeight: '80px',
-              padding: '0.75rem',
-              background: '#1a1d29',
-              border: '1px solid #3a3d4a',
-              borderRadius: '0.5rem',
-              color: '#ffffff',
-              fontSize: '0.95rem',
-              fontFamily: 'inherit',
-              resize: 'vertical',
-            }}
+            className="w-full min-h-[80px] p-3 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-y placeholder-zinc-600"
           />
         </div>
-        <div style={{
-          display: 'flex',
-          gap: '1rem',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-        }}>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <label style={{ fontSize: '0.9rem', color: '#ccc' }}>Timeframe:</label>
+        <div className="flex flex-wrap gap-4 items-center">
+          <div className="flex gap-2 items-center">
+            <label className="text-sm text-zinc-400">Timeframe:</label>
             <select
               value={timeframe}
               onChange={(e) => setTimeframe(e.target.value as Timeframe)}
-              style={{
-                padding: '0.5rem 0.75rem',
-                background: '#1a1d29',
-                border: '1px solid #3a3d4a',
-                borderRadius: '0.5rem',
-                color: '#ffffff',
-                fontSize: '0.9rem',
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-              }}
+              className="px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
             >
               <option value="day">Day</option>
               <option value="week">Week</option>
@@ -83,19 +53,7 @@ export function GoalInput({ onGoalSubmit }: GoalInputProps) {
           </div>
           <button
             type="submit"
-            style={{
-              padding: '0.5rem 1.5rem',
-              background: '#3b82f6',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '0.5rem',
-              cursor: 'pointer',
-              fontSize: '0.9rem',
-              fontWeight: '500',
-              transition: 'background 0.2s',
-            }}
-            onMouseOver={(e) => e.currentTarget.style.background = '#2563eb'}
-            onMouseOut={(e) => e.currentTarget.style.background = '#3b82f6'}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors shadow-lg shadow-blue-500/20"
           >
             Set Goal
           </button>

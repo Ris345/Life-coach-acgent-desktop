@@ -16,7 +16,7 @@ import uvicorn
 import time
 import threading
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import os
 import subprocess
 import json
@@ -27,6 +27,7 @@ from db import get_supabase_client, get_sqlite_connection, close_sqlite_connecti
 from services.analytics_service import init_analytics_table, create_analytics_event
 from services.user_service import get_user_by_email, create_user
 from services.database_service import get_database_service
+from services.correlation_service import CorrelationService
 from models.analytics import AnalyticsEventCreate, AnalyticsEventResponse
 from models.user import UserCreate
 from uuid import uuid4
@@ -107,6 +108,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:14200",
         "http://127.0.0.1:14200",
+        "http://localhost:1420",
+        "http://127.0.0.1:1420",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "tauri://localhost",
@@ -147,13 +150,17 @@ def get_active_window():
     try:
         if platform.system() == "Darwin":
             script = 'tell application "System Events" to get name of first application process whose frontmost is true'
-            result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+            # Add timeout to prevent hanging if AppleScript blocks
+            result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=2)
             return result.stdout.strip()
         elif platform.system() == "Windows":
             # Placeholder for Windows implementation
             return "Unknown"
         else:
             return "Unknown"
+    except subprocess.TimeoutExpired:
+        print("⚠️ get_active_window timed out")
+        return "Unknown"
     except Exception as e:
         print(f"Error getting active window: {e}")
         return "Unknown"
@@ -174,7 +181,8 @@ def get_active_chrome_tab():
     end tell
     """
     try:
-        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+        # Add timeout to prevent hanging
+        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=2)
         if result.returncode == 0 and result.stdout.strip():
             # Output format: "url, title"
             parts = result.stdout.strip().split(", ", 1)
@@ -374,7 +382,7 @@ def track_application_usage():
     Background thread function to track application usage.
     Runs every 1 second.
     """
-    global last_active_app, last_active_tab_url, tracking_active
+    global last_active_app, last_active_tab_url, tracking_active, activity_logs
     
     # Set tracking_active to True when thread starts
     tracking_active = True
@@ -386,6 +394,20 @@ def track_application_usage():
             # Track Application Usage
             if current_app != last_active_app:
                 app_usage[current_app]["visits"] += 1
+                
+                # Log event
+                if last_active_app:
+                    msg = f"Switched from {last_active_app} to {current_app}"
+                    activity_logs.append({
+                        "id": str(uuid4()),
+                        "type": "app",
+                        "message": msg,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    # Keep logs limited
+                    if len(activity_logs) > 50:
+                        activity_logs.pop(0)
+                
                 print(f"🔄 App changed: {last_active_app} -> {current_app}")
                 if last_active_app:
                      print(f"  Recorded {app_usage[last_active_app]['total_seconds']}s for {last_active_app}")
@@ -452,13 +474,65 @@ async def get_activity():
     Get the current activity (active window/application).
     This endpoint is polled by the frontend every 1 second.
     """
-    active_window = get_active_window()
+    """
+    Get the current activity (active window/application).
+    This endpoint is polled by the frontend every 1 second.
+    """
+    # Use DataCollector's state which is updated by Rust
+    usage_data = orchestrator.data_collector.get_usage_detailed()
+    current_status = usage_data.get("current_status", {})
+    active_window = current_status.get("app", "Unknown")
     
     return ActivityResponse(
         active_window=active_window,
         platform=platform.system(),
         status="ok"
     )
+
+class ActivityUpdate(BaseModel):
+    app_name: str
+    window_title: str
+    url: Optional[str] = None
+
+@app.post("/api/activity/update")
+def update_activity(activity: ActivityUpdate):
+    """
+    Receive active window update from Rust sidecar.
+    """
+    # Debug log
+    # print(f"📥 Rust Push: {activity.app_name} - {activity.window_title}")
+    
+    # Pass to DataCollectorAgent
+    orchestrator.data_collector.update_activity(
+        app_name=activity.app_name,
+        window_title=activity.window_title,
+        url=activity.url
+    )
+    return {"status": "ok"}
+
+
+@app.get("/api/activity/logs")
+async def get_activity_logs():
+    """
+    Get recent system activity logs (app switches, etc).
+    """
+    from services.database_service import get_database_service
+    db = get_database_service()
+    
+    # Get logs for current user (or all if no user context yet)
+    # Ideally we should filter by user_id from auth, but for now we'll get all
+    # since this is a single-user desktop app mostly.
+    logs = db.get_recent_logs(limit=50)
+    
+    if not logs:
+        return {"logs": [{
+            "id": "init",
+            "type": "system",
+            "message": "Monitoring active...",
+            "timestamp": datetime.now().isoformat()
+        }]}
+    
+    return {"logs": logs}
 
 
 @app.get("/metrics")
@@ -529,6 +603,14 @@ async def get_application_metrics():
     detailed_usage = await orchestrator.get_metrics()
     context_switches = await orchestrator.get_context_switches()
     
+    # Handle new structure from DataCollector
+    current_status = None
+    if "current_status" in detailed_usage:
+        current_status = detailed_usage["current_status"]
+        
+    if "usage" in detailed_usage:
+        detailed_usage = detailed_usage["usage"]
+    
     metrics = []
     for app_name, data in detailed_usage.items():
         # Calculate average session duration
@@ -550,6 +632,7 @@ async def get_application_metrics():
         "metrics": metrics,
         "total_applications": len(metrics),
         "context_switches": context_switches,
+        "current_status": current_status,
         "status": "ok"
     }
 
@@ -584,7 +667,74 @@ async def reset_usage_endpoint():
     }
 
 
+@app.post("/api/morning-briefing")
+async def get_morning_briefing(request: Dict[str, Any]):
+    """
+    Generate a morning briefing for the user.
+    """
+    user_id = request.get("user_id")
+    goal = request.get("goal")
+    
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+        
+    briefing = await orchestrator.get_morning_briefing(user_id, goal)
+    return briefing
 
+
+
+
+
+@app.get("/api/correlations")
+async def get_correlations(user_id: str, days: int = 7):
+    """
+    Get correlation analysis between app usage and focus scores.
+    """
+    service = CorrelationService()
+    return {"correlations": service.get_app_focus_correlations(user_id, days)}
+
+
+@app.get("/api/nudge/active")
+async def get_active_nudge():
+    """
+    Get the current active nudge for the overlay window.
+    """
+    nudge = orchestrator.get_active_nudge()
+    return {"nudge": nudge}
+
+
+@app.post("/api/flow/toggle")
+async def toggle_flow_state():
+    """
+    Toggle Flow State (Deep Focus) on/off.
+    Used by System Tray and global shortcuts.
+    """
+    is_active = orchestrator.flow_agent.is_flow_active
+    
+    if is_active:
+        # Turn off
+        result = await orchestrator.flow_agent.process({"action": "exit"})
+        return {"status": "inactive", "message": "Flow State deactivated", "details": result}
+    else:
+        # Turn on
+        # Use current goal from orchestrator or default
+        current_goal = orchestrator.system_state.get("current_goal") or "Deep Focus Session"
+        # We need a user_id, ideally from context or default. 
+        # For now, we'll use a placeholder if not found, or the last active user.
+        # Since this is a local desktop app, single user assumption is often okay, 
+        # but let's try to get it right.
+        # For now, pass None as user_id if not known, FlowAgent handles it gracefully?
+        # FlowAgent needs user_id for XP.
+        # Let's assume the frontend has set the user context, but the tray might not know it.
+        # We can fetch the last created user from DB as a fallback?
+        # Or just skip XP if no user_id.
+        
+        result = await orchestrator.flow_agent.process({
+            "action": "enter", 
+            "goal": current_goal,
+            "user_id": "default_user" # Placeholder, ideally fetch real user
+        })
+        return {"status": "active", "message": "Flow State activated", "details": result}
 
 
 # ============================================================================
@@ -693,6 +843,7 @@ async def track_analytics_event(event: AnalyticsEventRequest):
 # with the Tauri desktop app
 
 oauth_pending: Dict[str, Dict[str, Any]] = {}  # {state: {code, state, timestamp}}
+activity_logs: List[Dict[str, Any]] = [] # Global in-memory logs
 
 
 @app.post("/api/oauth/callback")
@@ -874,20 +1025,53 @@ db_service = get_database_service()
 async def set_current_user(user_data: dict):
     """
     Set current user for tracking and load their historical data.
+    Creates user if not exists.
     """
     user_id = user_data.get("user_id")
+    email = user_data.get("email")
+    name = user_data.get("name")
+    
     if not user_id:
         raise HTTPException(status_code=400, detail="user_id is required")
+    
+    # Ensure user exists in DB
+    db_service.create_user(user_id, email, name)
     
     # Set user in DataCollectorAgent
     orchestrator.data_collector.set_user(user_id)
     
     return {"status": "ok", "message": f"User {user_id} set successfully"}
 
+@app.get("/api/user/me")
+async def get_user_profile(user_id: str):
+    """Get current user profile."""
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    
+    user = db_service.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    return {"status": "ok", "user": dict(user)}
+
+@app.post("/api/user/consent")
+async def update_privacy_consent(data: dict):
+    """Record user privacy consent."""
+    user_id = data.get("user_id")
+    version = data.get("version")
+    consented = data.get("consented", False)
+    
+    if not user_id or not version:
+        raise HTTPException(status_code=400, detail="user_id and version are required")
+        
+    db_service.update_user_privacy_consent(user_id, version, consented)
+    return {"status": "ok", "message": "Consent updated"}
+
 @app.post("/api/goals/set")
 async def set_user_goal(goal_data: dict):
     """
     Save user goal to local database and send to orchestrator for LLM analysis.
+    Waits for analysis to complete and saves the generated strategy.
     """
     user_id = goal_data.get("user_id")
     goal_text = goal_data.get("goal")
@@ -896,11 +1080,20 @@ async def set_user_goal(goal_data: dict):
     if not user_id or not goal_text:
         raise HTTPException(status_code=400, detail="user_id and goal are required")
     
-    # Save to local database
-    goal = db_service.save_goal(user_id, goal_text, timeframe)
+    # Send to orchestrator for LLM analysis first
+    print(f"🤖 Analyzing goal for user {user_id}: {goal_text}")
+    analysis = await orchestrator.set_goal(goal_text)
     
-    # Also send to orchestrator for LLM analysis
-    await orchestrator.set_goal(goal_text)
+    # Extract strategy from analysis
+    strategy_json = None
+    if analysis and "strategy" in analysis:
+        try:
+            strategy_json = json.dumps(analysis["strategy"])
+        except Exception as e:
+            print(f"Error serializing strategy: {e}")
+    
+    # Save to local database with strategy
+    goal = db_service.save_goal(user_id, goal_text, timeframe, strategy_json)
     
     return {
         "status": "ok",
@@ -921,6 +1114,42 @@ async def get_current_goal(user_id: str):
     return {
         "status": "ok",
         "goal": goal
+    }
+
+@app.get("/api/goals/history")
+async def get_goal_history(user_id: str):
+    """
+    Get all goals for a user.
+    """
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    
+    goals = db_service.get_user_goals(user_id)
+    
+    return {
+        "status": "ok",
+        "goals": goals
+    }
+
+@app.post("/api/goals/switch")
+async def switch_goal(request: Dict[str, Any]):
+    """
+    Switch active goal.
+    """
+    user_id = request.get("user_id")
+    goal_id = request.get("goal_id")
+    
+    if not user_id or not goal_id:
+        raise HTTPException(status_code=400, detail="user_id and goal_id are required")
+    
+    success = db_service.set_active_goal(user_id, goal_id)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Goal not found")
+        
+    return {
+        "status": "ok",
+        "message": "Goal switched successfully"
     }
 
 
@@ -974,6 +1203,10 @@ async def check_nudge_status(user_id: str):
         
         # Get current metrics
         chrome_tabs = await orchestrator.get_chrome_tabs()
+        print(f"🔍 Raw Chrome Tabs: {len(chrome_tabs)} tabs found")
+        for tab in chrome_tabs:
+            print(f"  - {tab.get('url')} ({tab.get('total_time')}s)")
+            
         app_metrics = await orchestrator.get_metrics()
         context_switches = await orchestrator.get_context_switches()
         
@@ -1016,6 +1249,33 @@ async def check_nudge_status(user_id: str):
             "nudge": {"nudge_needed": False}
         }
 
+@app.post("/api/nudge/test")
+async def test_nudge(request: Dict[str, Any]):
+    """
+    Trigger a test notification.
+    """
+    user_id = request.get("user_id")
+    level = request.get("level", 1)
+    
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    
+    try:
+        # Trigger a test notification via SmartNudgeAgent
+        # We'll access the method directly for testing
+        agent = orchestrator.smart_nudge_agent
+        
+        if level == 1:
+            agent._send_native_notification("👋 Test Nudge", "This is a gentle reminder to stay focused.")
+        elif level == 2:
+            agent._send_native_notification("⚠️ Test Warning", "This is a firm warning from your AI coach.")
+        else:
+            agent._send_native_notification("🤖 Test Intervention", "This is how an AI intervention would look.")
+            
+        return {"status": "ok", "message": "Test notification sent"}
+    except Exception as e:
+        print(f"Error sending test notification: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/probability/calculate")
 async def calculate_success_probability(user_id: Optional[str] = None):
@@ -1134,6 +1394,133 @@ async def calculate_success_probability(user_id: Optional[str] = None):
             },
             "status": "ok"
         }
+
+
+@app.get("/api/analytics/weekly")
+async def get_weekly_analytics(user_id: str):
+    """
+    Get weekly analytics data for charts.
+    Returns daily stats for the last 7 days.
+    """
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    
+    try:
+        stats = db_service.get_daily_stats(user_id, days=7)
+        
+        # Format for frontend chart
+        # Ensure we have entries for all days, even if empty
+        formatted_stats = []
+        today = date.today()
+        
+        for i in range(6, -1, -1):
+            day = today - timedelta(days=i)
+            day_str = day.isoformat()
+            
+            # Find stat for this day
+            day_stat = next((s for s in stats if s['date'] == day_str), None)
+            
+            if day_stat:
+                formatted_stats.append({
+                    "date": day.strftime("%a"), # Mon, Tue, etc.
+                    "full_date": day_str,
+                    "success_probability": day_stat['success_probability'],
+                    "focus_minutes": day_stat['focus_minutes'],
+                    "distraction_minutes": day_stat['distraction_minutes']
+                })
+            else:
+                formatted_stats.append({
+                    "date": day.strftime("%a"),
+                    "full_date": day_str,
+                    "success_probability": 0, # Or None to show gap
+                    "focus_minutes": 0,
+                    "distraction_minutes": 0
+                })
+                
+        return {
+            "status": "ok",
+            "stats": formatted_stats
+        }
+    except Exception as e:
+        print(f"Error getting weekly analytics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== FLOW STATE ENDPOINTS ====================
+
+@app.post("/api/debug/seed")
+async def seed_data(user_id: str):
+    """
+    Seed mock data for immediate value.
+    """
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+        
+    orchestrator.correlation_service.seed_mock_data(user_id)
+    return {"status": "seeded"}
+
+@app.post("/api/flow/enter")
+async def enter_flow_state(request: Dict[str, Any]):
+    """
+    Enter Flow State.
+    Closes distractors and opens productive tools.
+    """
+    goal = request.get("goal")
+    if not goal:
+        raise HTTPException(status_code=400, detail="goal is required")
+        
+    try:
+        result = await orchestrator.flow_agent.process({
+            "action": "enter",
+            "goal": goal
+        })
+        return result
+    except Exception as e:
+        print(f"Error entering flow state: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/flow/exit")
+async def exit_flow_state():
+    """
+    Exit Flow State.
+    """
+    try:
+        result = await orchestrator.flow_agent.process({
+            "action": "exit"
+        })
+        return result
+    except Exception as e:
+        print(f"Error exiting flow state: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/flow/status")
+async def get_flow_status():
+    """
+    Get current Flow State status.
+    """
+    try:
+        result = await orchestrator.flow_agent.process({
+            "action": "status"
+        })
+        return result
+    except Exception as e:
+        print(f"Error getting flow status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/gamification/stats")
+async def get_user_stats(user_id: str):
+    """
+    Get user's gamification stats (XP, Level).
+    """
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+        
+    stats = await orchestrator.get_user_stats(user_id)
+    return {
+        "status": "ok",
+        "stats": stats
+    }
 
 
 if __name__ == "__main__":

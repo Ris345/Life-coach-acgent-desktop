@@ -11,7 +11,7 @@ export function GoalTracker({ timeframe, onTrackDay, trackedDays }: GoalTrackerP
   const getDaysForTimeframe = (): { label: string; date: Date }[] => {
     const days: { label: string; date: Date }[] = [];
     const today = new Date();
-    
+
     if (timeframe === 'day') {
       days.push({
         label: 'Today',
@@ -21,7 +21,7 @@ export function GoalTracker({ timeframe, onTrackDay, trackedDays }: GoalTrackerP
       // Get start of week (Sunday)
       const startOfWeek = new Date(today);
       startOfWeek.setDate(today.getDate() - today.getDay());
-      
+
       for (let i = 0; i < 7; i++) {
         const date = new Date(startOfWeek);
         date.setDate(startOfWeek.getDate() + i);
@@ -36,7 +36,7 @@ export function GoalTracker({ timeframe, onTrackDay, trackedDays }: GoalTrackerP
       const year = today.getFullYear();
       const month = today.getMonth();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
-      
+
       for (let i = 1; i <= daysInMonth; i++) {
         const date = new Date(year, month, i);
         days.push({
@@ -45,7 +45,7 @@ export function GoalTracker({ timeframe, onTrackDay, trackedDays }: GoalTrackerP
         });
       }
     }
-    
+
     return days;
   };
 
@@ -68,67 +68,41 @@ export function GoalTracker({ timeframe, onTrackDay, trackedDays }: GoalTrackerP
   };
 
   return (
-    <div style={{
-      background: '#252936',
-      padding: '1.5rem',
-      borderRadius: '0.75rem',
-    }}>
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '1rem',
-      }}>
-        <h3 style={{ fontSize: '1.1rem', fontWeight: '600' }}>
+    <div className="bg-zinc-900 p-6 rounded-xl border border-zinc-800 shadow-lg">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold text-white">
           Progress Tracker
         </h3>
-        <div style={{ fontSize: '0.9rem', color: '#888' }}>
+        <div className="text-sm text-zinc-400 font-medium">
           {trackedCount} / {totalDays} days
         </div>
       </div>
 
-      <div style={{ marginBottom: '1.5rem' }}>
-        <div style={{
-          width: '100%',
-          height: '8px',
-          background: '#1a1d29',
-          borderRadius: '4px',
-          overflow: 'hidden',
-        }}>
-          <div style={{
-            width: `${progressPercentage}%`,
-            height: '100%',
-            background: '#10b981',
-            transition: 'width 0.3s ease',
-          }} />
+      <div className="mb-6">
+        <div className="w-full h-2 bg-zinc-950 rounded-full overflow-hidden border border-zinc-800/50">
+          <div
+            className="h-full bg-emerald-500 transition-all duration-500 ease-out shadow-[0_0_10px_rgba(16,185,129,0.3)]"
+            style={{ width: `${progressPercentage}%` }}
+          />
         </div>
-        <div style={{
-          marginTop: '0.5rem',
-          fontSize: '0.85rem',
-          color: '#888',
-          textAlign: 'right',
-        }}>
+        <div className="mt-2 text-xs text-zinc-500 text-right font-medium">
           {Math.round(progressPercentage)}% complete
         </div>
       </div>
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: timeframe === 'month' 
-          ? 'repeat(7, 1fr)' 
-          : `repeat(${Math.min(totalDays, 7)}, 1fr)`,
-        gap: '0.5rem',
-      }}>
+      <div className={`grid gap-2 ${timeframe === 'month'
+          ? 'grid-cols-7'
+          : `grid-cols-${Math.min(totalDays, 7)}`
+        }`}>
         {days.map((day, index) => {
           const isTracked = trackedDays.has(index);
           const isTodayDate = isToday(day.date);
           const isPastDate = isPast(day.date);
-          
+
           return (
             <button
               key={index}
               onClick={() => {
-                // Track day tracking click
                 trackButtonClick('track_day', {
                   day_index: index,
                   is_tracked: isTracked,
@@ -137,61 +111,41 @@ export function GoalTracker({ timeframe, onTrackDay, trackedDays }: GoalTrackerP
                 onTrackDay(index);
               }}
               disabled={isPastDate && !isTracked}
-              style={{
-                aspectRatio: '1',
-                padding: '0.5rem',
-                background: isTracked 
-                  ? '#10b981' 
-                  : isTodayDate 
-                    ? '#3b82f6' 
+              className={`
+                aspect-square p-2 rounded-lg border transition-all duration-200 flex flex-col items-center justify-center relative group
+                ${isTracked
+                  ? 'bg-emerald-500 border-emerald-400 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-400'
+                  : isTodayDate
+                    ? 'bg-blue-600 border-blue-400 text-white shadow-lg shadow-blue-500/20 hover:bg-blue-500 ring-2 ring-blue-400/30'
                     : isPastDate
-                      ? '#1a1d29'
-                      : '#2a2d3a',
-                border: isTodayDate ? '2px solid #3b82f6' : '1px solid #3a3d4a',
-                borderRadius: '0.5rem',
-                color: isTracked || isTodayDate ? '#fff' : '#888',
-                cursor: isPastDate && !isTracked ? 'not-allowed' : 'pointer',
-                fontSize: timeframe === 'month' ? '0.85rem' : '0.9rem',
-                fontWeight: isTodayDate ? '600' : '400',
-                transition: 'all 0.2s',
-                opacity: isPastDate && !isTracked ? 0.5 : 1,
-              }}
-              onMouseOver={(e) => {
-                if (!(isPastDate && !isTracked)) {
-                  e.currentTarget.style.transform = 'scale(1.05)';
-                  e.currentTarget.style.opacity = '0.9';
+                      ? 'bg-zinc-950 border-zinc-800 text-zinc-600 cursor-not-allowed opacity-50'
+                      : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:border-zinc-700 hover:text-zinc-200'
                 }
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.opacity = isPastDate && !isTracked ? 0.5 : 1;
-              }}
+                ${!(isPastDate && !isTracked) ? 'hover:scale-105' : ''}
+              `}
               title={isTracked ? 'On track ✓' : isTodayDate ? 'Today' : isPastDate ? 'Missed' : 'Click to mark as on track'}
             >
-              <div>{day.label}</div>
-              {isTracked && <div style={{ fontSize: '0.7rem', marginTop: '0.25rem' }}>✓</div>}
+              <div className={`text-sm font-medium ${timeframe === 'month' ? 'text-xs' : ''}`}>
+                {day.label}
+              </div>
+              {isTracked && (
+                <div className="text-[10px] mt-0.5 font-bold">✓</div>
+              )}
             </button>
           );
         })}
       </div>
 
       {timeframe === 'month' && (
-        <div style={{
-          marginTop: '1rem',
-          padding: '0.75rem',
-          background: '#1a1d29',
-          borderRadius: '0.5rem',
-          fontSize: '0.85rem',
-          color: '#888',
-        }}>
-          <div style={{ marginBottom: '0.25rem' }}>
-            <span style={{ color: '#10b981' }}>■</span> On track
+        <div className="mt-4 p-3 bg-zinc-950 rounded-lg text-xs text-zinc-500 flex gap-4 justify-center border border-zinc-800/50">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.4)]"></span> On track
           </div>
-          <div style={{ marginBottom: '0.25rem' }}>
-            <span style={{ color: '#3b82f6' }}>■</span> Today
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-blue-600 shadow-[0_0_5px_rgba(37,99,235,0.4)]"></span> Today
           </div>
-          <div>
-            <span style={{ color: '#888' }}>■</span> Missed / Not tracked
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-zinc-800 border border-zinc-700"></span> Missed
           </div>
         </div>
       )}

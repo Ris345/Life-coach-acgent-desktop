@@ -26,7 +26,7 @@
     "store:allow-entries",
     "store:allow-length",
     "store:allow-load",
-    "store:allow-save"
+    "store:allow-save",
+    "notification:default"
   ]
 }
-

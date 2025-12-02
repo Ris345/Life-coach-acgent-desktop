@@ -1,351 +1,195 @@
-import { useState, useEffect } from 'react';
-import { GoalInput, Timeframe } from './GoalInput';
-import { MetricsOverview } from './MetricsOverview';
-import { GoalTracker } from './GoalTracker';
-import { ApplicationsList } from './ApplicationsList';
-import { UsageMetrics } from './UsageMetrics';
-import { SmartNudgeToggle } from './SmartNudgeToggle';
-import { trackPageView, trackButtonClick } from '../utils/analytics';
+import { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { NudgeToast, Nudge } from './NudgeToast';
+import { LevelUpModal } from './LevelUpModal';
+import { LiveFeed } from './LiveFeed';
+import { ObjectiveHeader } from './dashboard/ObjectiveHeader';
+import { TrendChart } from './dashboard/TrendChart';
+import { MetricsGrid } from './dashboard/MetricsGrid';
+import { StrategyDisplay } from './StrategyDisplay';
+import { DebugPanel } from './dashboard/DebugPanel';
+import { ImpactLeaderboard } from './dashboard/ImpactLeaderboard';
+
+import { useGoalAnalysis } from '../hooks/useGoalAnalysis';
+import { useGoalSessionStore } from '../stores/useGoalSessionStore';
+
+interface UserMetrics {
+  focus_time_minutes: number;
+  distracted_time_minutes: number;
+  success_probability: number;
+  context_switches: number;
+  applications_used: Record<string, number>;
+  weekly_stats: any[];
+}
 
 export function Dashboard() {
-  const [currentGoal, setCurrentGoal] = useState<string | null>(null);
-  const [currentTimeframe, setCurrentTimeframe] = useState<Timeframe>('week');
-  const [trackedDays, setTrackedDays] = useState<Set<number>>(new Set());
-  const [smartNudgeEnabled, setSmartNudgeEnabled] = useState<boolean>(false);
-  const [contextSwitches, setContextSwitches] = useState(0);
-  const [successProbability, setSuccessProbability] = useState<number | null>(null);
-  const [probabilityExplanation, setProbabilityExplanation] = useState<string>('');
+  const { user } = useAuth();
+  const [metrics, setMetrics] = useState<UserMetrics | null>(null);
+  const [currentGoal, setCurrentGoal] = useState<string>('');
+  const [currentStrategy, setCurrentStrategy] = useState<string | null>(null);
+  const [activeNudge, setActiveNudge] = useState<Nudge | null>(null);
+  const [showLevelUp, setShowLevelUp] = useState(false);
+  const [currentLevel, setCurrentLevel] = useState(1);
+  const [correlations, setCorrelations] = useState<any[]>([]);
+  const prevLevelRef = useRef(0);
 
-  // Mocked metrics data
-  const [focusTime] = useState(145); // minutes
-  const [activityCount] = useState(12);
-  const [showAllApps, setShowAllApps] = useState(false);
+  const { runAnalysis } = useGoalAnalysis();
+  const { strategy: newStrategy, parsedGoal: newParsedGoal } = useGoalSessionStore();
 
-  // Track page view when dashboard loads
+  // Sync store updates to local state
   useEffect(() => {
-    trackPageView('/dashboard');
-  }, []);
+    if (newStrategy) setCurrentStrategy(newStrategy);
+    if (newParsedGoal) setCurrentGoal(newParsedGoal.goal);
+  }, [newStrategy, newParsedGoal]);
 
-  // Fetch context switches from backend
+  // Load initial data
   useEffect(() => {
-    const fetchContextSwitches = async () => {
+    if (!user?.id) return;
+
+    // Initialize user in backend (DataCollector)
+    fetch('http://127.0.0.1:14200/api/user/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: user.id,
+        email: user.email,
+        name: user.name || user.email?.split('@')[0]
+      })
+    }).catch(err => console.error("Failed to set user:", err));
+
+    fetch(`http://127.0.0.1:14200/api/goals/current?user_id=${user.id}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.goal) {
+          setCurrentGoal(data.goal.goal_text || data.goal.goal || '');
+          if (data.goal.strategy) setCurrentStrategy(data.goal.strategy);
+        }
+      })
+      .catch(err => console.error("Failed to load goal:", err));
+  }, [user?.id]);
+
+  // Poll for metrics
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const fetchMetrics = async () => {
       try {
-        const response = await fetch('http://localhost:14200/api/metrics/applications');
-        if (response.ok) {
-          const data = await response.json();
-          setContextSwitches(data.context_switches || 0);
-        }
-      } catch (error) {
-        console.error('Failed to fetch context switches:', error);
-      }
-    };
+        const [probRes, switchRes, weeklyRes, gameRes, corrRes] = await Promise.all([
+          fetch(`http://127.0.0.1:14200/api/probability/calculate?user_id=${user.id}`),
+          fetch(`http://127.0.0.1:14200/api/metrics/applications`),
+          fetch(`http://127.0.0.1:14200/api/analytics/weekly?user_id=${user.id}`),
+          fetch(`http://127.0.0.1:14200/api/gamification/stats?user_id=${user.id}`),
+          fetch(`http://127.0.0.1:14200/api/correlations?user_id=${user.id}`)
+        ]);
 
-    // Fetch immediately
-    fetchContextSwitches();
+        const probData = await probRes.json();
+        const switchData = await switchRes.json();
+        const weeklyData = await weeklyRes.json();
+        const gameData = await gameRes.json();
+        const corrData = await corrRes.json();
 
-    // Poll every 5 seconds for updates
-    const interval = setInterval(fetchContextSwitches, 5000);
+        const todayStats = weeklyData.stats ? weeklyData.stats[weeklyData.stats.length - 1] : null;
 
-    return () => clearInterval(interval);
-  }, []);
-
-  // Fetch success probability from backend
-  useEffect(() => {
-    const fetchSuccessProbability = async () => {
-      try {
-        // Get user from localStorage
-        const authData = localStorage.getItem('auth_user');
-        let userId = '';
-
-        if (authData) {
-          const user = JSON.parse(authData);
-          userId = user.id || '';
+        // Handle Level Up
+        const newLevel = gameData.stats?.level || 1;
+        if (prevLevelRef.current === 0) {
+          prevLevelRef.current = newLevel;
+        } else if (newLevel > prevLevelRef.current) {
+          setCurrentLevel(newLevel);
+          setShowLevelUp(true);
+          prevLevelRef.current = newLevel;
         }
 
-        const response = await fetch(
-          `http://localhost:14200/api/probability/calculate?user_id=${userId}`
-        );
-        if (response.ok) {
-          const data = await response.json();
-          const prob = data.probability;
-          setSuccessProbability(Math.round(prob.score * 100));
-          setProbabilityExplanation(prob.explanation || '');
-        }
-      } catch (error) {
-        console.error('Failed to fetch success probability:', error);
-      }
-    };
-
-    // Fetch immediately
-    fetchSuccessProbability();
-
-    // Poll every 30 seconds for updates
-    const interval = setInterval(fetchSuccessProbability, 30000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Initialize user and load their goal on mount
-  useEffect(() => {
-    const initializeUser = async () => {
-      try {
-        // Get user from localStorage (set during Google OAuth login)
-        const authData = localStorage.getItem('auth_user');
-        if (!authData) {
-          console.log('No auth data found');
-          return;
-        }
-
-        const user = JSON.parse(authData);
-        const userId = user.id;
-
-        if (userId) {
-          console.log('Initializing user:', userId);
-
-          // Set user in backend (loads historical metrics)
-          await fetch('http://localhost:14200/api/user/set', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: userId })
-          });
-
-          // Load user's current goal from database
-          const response = await fetch(
-            `http://localhost:14200/api/goals/current?user_id=${userId}`
-          );
-          if (response.ok) {
-            const data = await response.json();
-            console.log('Goal data:', data);
-            if (data.goal) {
-              setCurrentGoal(data.goal.goal_text);
-              setCurrentTimeframe(data.goal.timeframe as Timeframe);
-              console.log('Loaded goal:', data.goal.goal_text);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Failed to initialize user:', error);
-      }
-    };
-
-    initializeUser();
-  }, []);
-
-  // Load Smart Nudge settings
-  useEffect(() => {
-    const loadNudgeSettings = async () => {
-      try {
-        const authData = localStorage.getItem('auth_user');
-        if (authData) {
-          const user = JSON.parse(authData);
-          const response = await fetch(
-            `http://localhost:14200/api/nudge/settings?user_id=${user.id}`
-          );
-          if (response.ok) {
-            const data = await response.json();
-            setSmartNudgeEnabled(data.enabled);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to load nudge settings:', error);
-      }
-    };
-
-    loadNudgeSettings();
-  }, []);
-
-  // Check for nudges when Smart Nudge is enabled
-  useEffect(() => {
-    if (!smartNudgeEnabled) return;
-
-    const checkNudge = async () => {
-      try {
-        const authData = localStorage.getItem('auth_user');
-        if (!authData) return;
-
-        const user = JSON.parse(authData);
-        const response = await fetch(
-          `http://localhost:14200/api/nudge/check?user_id=${user.id}`
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          const nudge = data.nudge;
-
-          if (nudge.nudge_needed) {
-            // Show desktop notification
-            if ('Notification' in window && Notification.permission === 'granted') {
-              new Notification(nudge.title, {
-                body: nudge.message,
-                icon: '/icon.png'
-              });
-            } else if ('Notification' in window && Notification.permission !== 'denied') {
-              Notification.requestPermission().then(permission => {
-                if (permission === 'granted') {
-                  new Notification(nudge.title, {
-                    body: nudge.message,
-                    icon: '/icon.png'
-                  });
-                }
-              });
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Failed to check nudge:', error);
-      }
-    };
-
-    // Check immediately
-    checkNudge();
-
-    // Poll every 5 minutes
-    const interval = setInterval(checkNudge, 300000);
-
-    return () => clearInterval(interval);
-  }, [smartNudgeEnabled]);
-
-  const handleSmartNudgeToggle = async (enabled: boolean) => {
-    setSmartNudgeEnabled(enabled);
-
-    try {
-      const authData = localStorage.getItem('auth_user');
-      if (authData) {
-        const user = JSON.parse(authData);
-        await fetch('http://localhost:14200/api/nudge/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: user.id,
-            enabled: enabled
-          })
-        });
-        console.log(`Smart Nudge ${enabled ? 'enabled' : 'disabled'}`);
-      }
-    } catch (error) {
-      console.error('Failed to update nudge settings:', error);
-    }
-  };
-
-  const handleGoalSubmit = async (goal: string, timeframe: Timeframe) => {
-    setCurrentGoal(goal);
-    setCurrentTimeframe(timeframe);
-
-    try {
-      // Get user from localStorage
-      const authData = localStorage.getItem('auth_user');
-      if (authData) {
-        const user = JSON.parse(authData);
-        const userId = user.id;
-
-        console.log('Saving goal for user:', userId);
-
-        // Save goal to local database (also triggers LLM analysis)
-        const response = await fetch('http://localhost:14200/api/goals/set', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: userId,
-            goal: goal,
-            timeframe: timeframe
-          })
+        setMetrics({
+          focus_time_minutes: todayStats ? todayStats.focus_minutes : 0,
+          distracted_time_minutes: todayStats ? todayStats.distraction_minutes : 0,
+          success_probability: probData.probability?.score ? Math.round(probData.probability.score * 100) : 0,
+          context_switches: switchData.context_switches || 0,
+          // Map array of metrics to dictionary for compatibility
+          applications_used: switchData.metrics ?
+            switchData.metrics.reduce((acc: any, app: any) => {
+              acc[app.name] = app.total_time;
+              return acc;
+            }, {}) : {},
+          weekly_stats: weeklyData.stats || [],
         });
 
-        if (response.ok) {
-          console.log('Goal saved successfully');
-        }
+        setCorrelations(corrData.correlations || []);
+
+      } catch (error) {
+        console.error("Error fetching metrics:", error);
       }
-    } catch (error) {
-      console.error('Failed to save goal:', error);
-    }
+    };
 
-    trackButtonClick('set_goal', { goal, timeframe });
-    setTrackedDays(new Set());
+    fetchMetrics();
+    const interval = setInterval(fetchMetrics, 5000);
+    return () => clearInterval(interval);
+  }, [user?.id]);
 
-    // Track goal creation
-    trackButtonClick('goal_submit', {
-      timeframe: timeframe,
-      goal_length: goal.length,
-    });
+  const handleUpdateGoal = async (newGoal: string) => {
+    if (!user?.id) return;
+    // Trigger the AI Analysis flow
+    runAnalysis(newGoal, user.id);
   };
 
-  const handleTrackDay = (dayIndex: number) => {
-    setTrackedDays((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(dayIndex)) {
-        newSet.delete(dayIndex);
-      } else {
-        newSet.add(dayIndex);
-      }
-      return newSet;
-    });
-  };
+  // Prepare chart data
+  const trendData = metrics?.weekly_stats.map(d => d.success_probability || 0) || [];
+  const trendLabels = metrics?.weekly_stats.map(d => d.date) || [];
+
+
 
   return (
-    <div style={{
-      maxWidth: '1200px',
-      margin: '0 auto',
-    }}>
-      {/* Smart Nudge Toggle */}
-      <div style={{ marginBottom: '2rem' }}>
-        <SmartNudgeToggle
-          enabled={smartNudgeEnabled}
-          onToggle={handleSmartNudgeToggle}
-        />
-      </div>
+    <div className="space-y-8">
+      <DebugPanel />
+      <NudgeToast nudge={activeNudge} onDismiss={() => setActiveNudge(null)} />
+      {showLevelUp && <LevelUpModal level={currentLevel} onClose={() => setShowLevelUp(false)} />}
 
-      <GoalInput onGoalSubmit={handleGoalSubmit} />
+      <div className="grid grid-cols-12 gap-8 h-full">
+        {/* LEFT COLUMN: Charts & Data (9 cols) */}
+        <div className="col-span-12 lg:col-span-9 space-y-8 pb-8">
 
-      <MetricsOverview
-        currentGoal={currentGoal}
-        focusTime={focusTime}
-        activityCount={activityCount}
-        contextSwitches={contextSwitches}
-        successProbability={successProbability}
-        probabilityExplanation={probabilityExplanation}
-      />
+          {/* 1. Header Section */}
+          <ObjectiveHeader
+            currentGoal={currentGoal}
+            focusScore={metrics?.success_probability || 0}
+            onUpdateGoal={handleUpdateGoal}
+          />
 
-      <UsageMetrics />
+          {/* 2. Primary Trend Chart */}
+          <TrendChart data={trendData} labels={trendLabels} />
 
-      <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
-        <button
-          onClick={() => setShowAllApps(!showAllApps)}
-          style={{
-            background: 'transparent',
-            border: '1px solid #444',
-            color: '#888',
-            padding: '0.5rem 1rem',
-            borderRadius: '0.5rem',
-            cursor: 'pointer',
-            fontSize: '0.9rem',
-          }}
-        >
-          {showAllApps ? 'Hide All Applications' : 'Show All Installed Applications'}
-        </button>
-      </div>
+          {/* 3. Metrics Grid */}
+          <MetricsGrid
+            focusTime={metrics?.focus_time_minutes || 0}
+            distractionTime={metrics?.distracted_time_minutes || 0}
+            appUsage={Object.entries(metrics?.applications_used || {})
+              .map(([name, duration]) => ({
+                name,
+                duration,
+                category: (['VS Code', 'Terminal', 'Xcode', 'Figma', 'Notion'].some(app => name.includes(app))
+                  ? 'productive'
+                  : 'distracting') as 'productive' | 'distracting'
+              }))
+              .sort((a, b) => b.duration - a.duration)
+              .slice(0, 5)
+            }
+            contextSwitches={metrics?.context_switches || 0}
+          />
 
-      {showAllApps && <ApplicationsList />}
-
-      {currentGoal && (
-        <GoalTracker
-          timeframe={currentTimeframe}
-          onTrackDay={handleTrackDay}
-          trackedDays={trackedDays}
-        />
-      )}
-
-      {!currentGoal && (
-        <div style={{
-          background: '#252936',
-          padding: '2rem',
-          borderRadius: '0.75rem',
-          textAlign: 'center',
-          color: '#888',
-        }}>
-          <p>Set a goal above to start tracking your progress!</p>
+          {/* 4. Focus Impact Chart */}
+          <ImpactLeaderboard data={correlations} />
         </div>
-      )}
+
+        {/* RIGHT COLUMN: Live Feed (3 cols) */}
+        <div className="col-span-12 lg:col-span-3 flex flex-col">
+          <LiveFeed />
+        </div>
+
+        {/* 5. Strategy / Roadmap (Full Width) */}
+        <div className="col-span-12">
+          {currentStrategy && <StrategyDisplay strategyJson={currentStrategy} />}
+        </div>
+      </div>
     </div>
   );
 }
-

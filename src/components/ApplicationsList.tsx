@@ -30,48 +30,22 @@ export function ApplicationsList() {
   );
 
   return (
-    <div style={{
-      background: '#252936',
-      padding: '2rem',
-      borderRadius: '0.75rem',
-      marginBottom: '2rem',
-    }}>
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '1.5rem',
-      }}>
-        <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Installed Applications</h2>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+    <div className="bg-zinc-900 p-6 rounded-xl mb-8 border border-zinc-800 shadow-lg">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-xl font-semibold text-white">Installed Applications</h2>
+        <div className="flex gap-4 items-center">
           <input
             type="text"
             placeholder="Search applications..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              padding: '0.5rem 1rem',
-              background: '#1a1d29',
-              color: '#fff',
-              border: '1px solid #444',
-              borderRadius: '0.5rem',
-              fontSize: '0.9rem',
-              width: '250px',
-            }}
+            className="px-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64 placeholder-zinc-600"
           />
           <button
             onClick={loadApplications}
             disabled={isLoading}
-            style={{
-              padding: '0.5rem 1rem',
-              background: '#3b82f6',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '0.5rem',
-              cursor: isLoading ? 'not-allowed' : 'pointer',
-              fontSize: '0.9rem',
-              opacity: isLoading ? 0.6 : 1,
-            }}
+            className={`px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors shadow-lg shadow-blue-500/20 ${isLoading ? 'opacity-70 cursor-not-allowed' : ''
+              }`}
           >
             {isLoading ? 'Loading...' : 'Refresh'}
           </button>
@@ -79,70 +53,44 @@ export function ApplicationsList() {
       </div>
 
       {error && (
-        <div style={{
-          background: '#ff4444',
-          color: '#fff',
-          padding: '1rem',
-          borderRadius: '0.5rem',
-          marginBottom: '1rem',
-        }}>
+        <div className="bg-red-500/10 border border-red-500/20 text-red-200 p-4 rounded-lg mb-4 text-sm">
           {error}
         </div>
       )}
 
       {isLoading ? (
-        <div style={{ textAlign: 'center', padding: '2rem', color: '#888' }}>
+        <div className="text-center py-12 text-zinc-500">
           Loading applications...
         </div>
       ) : (
         <>
-          <div style={{ marginBottom: '1rem', color: '#888', fontSize: '0.9rem' }}>
+          <div className="mb-4 text-zinc-500 text-sm">
             Found {filteredApplications.length} application{filteredApplications.length !== 1 ? 's' : ''}
             {searchQuery && ` matching "${searchQuery}"`}
           </div>
-          
-          <div style={{
-            maxHeight: '600px',
-            overflowY: 'auto',
-            border: '1px solid #444',
-            borderRadius: '0.5rem',
-            background: '#1a1d29',
-          }}>
+
+          <div className="max-h-[600px] overflow-y-auto border border-zinc-800 rounded-lg bg-zinc-950 custom-scrollbar">
             {filteredApplications.length === 0 ? (
-              <div style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>
+              <div className="p-8 text-center text-zinc-500">
                 No applications found
               </div>
             ) : (
-              <div style={{ display: 'grid', gap: '0.5rem', padding: '0.5rem' }}>
+              <div className="grid gap-2 p-2">
                 {filteredApplications.map((app, index) => (
                   <div
                     key={index}
-                    style={{
-                      padding: '1rem',
-                      background: '#252936',
-                      borderRadius: '0.5rem',
-                      border: '1px solid #333',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
+                    className="p-4 bg-zinc-900/50 hover:bg-zinc-900 rounded-lg border border-zinc-800/50 hover:border-zinc-700 transition-all flex justify-between items-center group"
                   >
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: '500', marginBottom: '0.25rem' }}>
+                    <div className="flex-1 min-w-0 mr-4">
+                      <div className="font-medium text-white mb-1 truncate">
                         {app.name}
                       </div>
-                      <div style={{ fontSize: '0.85rem', color: '#888', fontFamily: 'monospace' }}>
+                      <div className="text-xs text-zinc-500 font-mono truncate group-hover:text-zinc-400 transition-colors">
                         {app.path}
                       </div>
                     </div>
                     {app.platform && (
-                      <div style={{
-                        padding: '0.25rem 0.75rem',
-                        background: '#3b82f6',
-                        borderRadius: '0.25rem',
-                        fontSize: '0.75rem',
-                        color: '#fff',
-                      }}>
+                      <div className="px-3 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded text-xs font-medium whitespace-nowrap">
                         {app.platform}
                       </div>
                     )}

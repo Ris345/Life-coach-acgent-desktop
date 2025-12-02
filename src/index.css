@@ -1,0 +1,147 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    line-height: 1.5;
+    font-weight: 400;
+    color-scheme: dark;
+}
+
+body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+    background-color: #050505;
+    background-image:
+        radial-gradient(circle at 15% 50%, rgba(76, 29, 149, 0.15), transparent 25%),
+        radial-gradient(circle at 85% 30%, rgba(56, 189, 248, 0.15), transparent 25%);
+    color: rgba(255, 255, 255, 0.9);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+}
+
+/* Animated Background Blobs */
+body::before,
+body::after {
+    content: '';
+    position: fixed;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    filter: blur(100px);
+    z-index: -1;
+    animation: float 20s infinite alternate ease-in-out;
+    opacity: 0.4;
+}
+
+body::before {
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.3), rgba(59, 130, 246, 0.1));
+    top: -10%;
+    left: -10%;
+    animation-delay: -5s;
+}
+
+body::after {
+    background: radial-gradient(circle, rgba(236, 72, 153, 0.3), rgba(168, 85, 247, 0.1));
+    bottom: -10%;
+    right: -10%;
+    animation-delay: 0s;
+}
+
+@keyframes float {
+    0% {
+        transform: translate(0, 0) scale(1);
+    }
+
+    33% {
+        transform: translate(30px, 50px) scale(1.1);
+    }
+
+    66% {
+        transform: translate(-20px, 20px) scale(0.9);
+    }
+
+    100% {
+        transform: translate(0, 0) scale(1);
+    }
+}
+
+@layer components {
+    .glass-panel {
+        @apply bg-[#0A0A0A]/80 backdrop-blur-xl border border-white/5 shadow-2xl;
+    }
+
+    .glass-card {
+        @apply bg-[#0A0A0A]/60 backdrop-blur-xl border border-white/5 rounded-2xl transition-all duration-300 hover:bg-[#171717]/80 hover:border-white/10 hover:shadow-2xl hover:-translate-y-1 relative overflow-hidden;
+    }
+
+    .glass-card::before {
+        content: '';
+        @apply absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 transition-opacity duration-500 pointer-events-none;
+    }
+
+    .glass-card:hover::before {
+        @apply opacity-100;
+    }
+
+    .glass-button {
+        @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 active:scale-95;
+    }
+
+    .glass-button-primary {
+        @apply bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-500/20;
+    }
+
+    .glass-button-secondary {
+        @apply bg-white/5 hover:bg-white/10 text-white border border-white/5;
+    }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.delay-100 {
+    animation-delay: 100ms;
+}
+
+.delay-200 {
+    animation-delay: 200ms;
+}
+
+.delay-300 {
+    animation-delay: 300ms;
+}

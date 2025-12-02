@@ -32,21 +32,28 @@ export function UsageMetrics() {
 
     useEffect(() => {
         loadMetrics();
-        // Refresh metrics every 1 second for real-time updates
-        const interval = setInterval(loadMetrics, 1000);
+
+        // Poll for updates every 2 seconds for real-time feel
+        const interval = setInterval(loadMetrics, 2000);
+
         return () => clearInterval(interval);
     }, []);
 
-    async function loadMetrics() {
+    const loadMetrics = async () => {
+        setError(null); // Clear previous errors
         try {
-            setError(null);
             const response = await fetch('http://127.0.0.1:14200/api/metrics/applications');
-            const data = await response.json();
-            setMetrics(data.metrics || []);
-        } catch (err) {
-            console.error('Failed to load metrics:', err);
-            if (metrics.length === 0) {
-                setError(err instanceof Error ? err.message : 'Failed to load metrics');
+            if (response.ok) {
+                const data = await response.json();
+                setMetrics(data.metrics || []);
+            } else {
+                const errorText = await response.text();
+                throw new Error(`Failed to fetch metrics: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+        } catch (error) {
+            console.error('Failed to load metrics:', error);
+            if (metrics.length === 0) { // Only set error state if no data was loaded previously
+                setError(error instanceof Error ? error.message : 'Failed to load metrics');
             }
         } finally {
             setIsLoading(false);
@@ -110,14 +117,7 @@ export function UsageMetrics() {
     };
 
     return (
-        <div style={{
-            background: '#1f2937', // Darker background for "Datadog" feel
-            padding: '1.5rem',
-            borderRadius: '0.5rem',
-            marginBottom: '2rem',
-            border: '1px solid #374151',
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
-        }}>
+        <div className="bg-zinc-900 p-6 rounded-xl mb-8 border border-zinc-800 shadow-lg">
             <TabListModal
                 isOpen={!!selectedApp}
                 onClose={() => setSelectedApp(null)}
@@ -125,48 +125,29 @@ export function UsageMetrics() {
             />
 
             {/* Header */}
-            <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '1.5rem',
-            }}>
+            <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h2 style={{ fontSize: '1.25rem', margin: 0, fontWeight: 600, color: '#f3f4f6' }}>Application Metrics</h2>
-                    <p style={{ margin: 0, fontSize: '0.875rem', color: '#9ca3af' }}>Real-time usage tracking ({metrics.length} apps)</p>
+                    <h2 className="text-lg font-semibold text-white mb-1">Application Metrics</h2>
+                    <p className="text-sm text-zinc-400">Real-time usage tracking ({metrics.length} apps)</p>
                 </div>
 
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', background: '#111827', borderRadius: '0.375rem', padding: '0.25rem', border: '1px solid #374151' }}>
+                <div className="flex gap-3 items-center">
+                    <div className="flex bg-zinc-950 rounded-lg p-1 border border-zinc-800">
                         <button
                             onClick={() => setViewMode('time')}
-                            style={{
-                                padding: '0.375rem 0.75rem',
-                                background: viewMode === 'time' ? '#374151' : 'transparent',
-                                color: viewMode === 'time' ? '#fff' : '#9ca3af',
-                                border: 'none',
-                                borderRadius: '0.25rem',
-                                cursor: 'pointer',
-                                fontSize: '0.875rem',
-                                fontWeight: 500,
-                                transition: 'all 0.2s'
-                            }}
+                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'time'
+                                ? 'bg-zinc-800 text-white shadow-sm'
+                                : 'text-zinc-400 hover:text-zinc-200'
+                                }`}
                         >
                             Time
                         </button>
                         <button
                             onClick={() => setViewMode('correlation')}
-                            style={{
-                                padding: '0.375rem 0.75rem',
-                                background: viewMode === 'correlation' ? '#374151' : 'transparent',
-                                color: viewMode === 'correlation' ? '#fff' : '#9ca3af',
-                                border: 'none',
-                                borderRadius: '0.25rem',
-                                cursor: 'pointer',
-                                fontSize: '0.875rem',
-                                fontWeight: 500,
-                                transition: 'all 0.2s'
-                            }}
+                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'correlation'
+                                ? 'bg-zinc-800 text-white shadow-sm'
+                                : 'text-zinc-400 hover:text-zinc-200'
+                                }`}
                         >
                             Correlation
                         </button>
@@ -175,18 +156,8 @@ export function UsageMetrics() {
                     <button
                         onClick={handleManualRefresh}
                         disabled={isLoading}
-                        style={{
-                            padding: '0.375rem 0.75rem',
-                            background: '#3b82f6',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '0.375rem',
-                            cursor: isLoading ? 'not-allowed' : 'pointer',
-                            fontSize: '0.875rem',
-                            fontWeight: 500,
-                            opacity: isLoading ? 0.7 : 1,
-                            transition: 'background 0.2s'
-                        }}
+                        className={`px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors shadow-lg shadow-blue-500/20 ${isLoading ? 'opacity-70 cursor-not-allowed' : ''
+                            }`}
                     >
                         {isLoading ? '...' : 'Refresh'}
                     </button>
@@ -194,35 +165,21 @@ export function UsageMetrics() {
             </div>
 
             {error && (
-                <div style={{
-                    background: '#7f1d1d',
-                    color: '#fecaca',
-                    padding: '0.75rem',
-                    borderRadius: '0.375rem',
-                    marginBottom: '1rem',
-                    border: '1px solid #991b1b',
-                    fontSize: '0.875rem'
-                }}>
+                <div className="bg-red-500/10 border border-red-500/20 text-red-200 p-3 rounded-lg mb-4 text-sm">
                     {error}
                 </div>
             )}
 
             {/* Content Area */}
-            <div style={{ height: '500px', width: '100%', position: 'relative', overflowY: 'auto', overflowX: 'hidden' }}>
+            <div className="h-[500px] w-full relative overflow-y-auto overflow-x-hidden custom-scrollbar">
                 {isLoading && metrics.length === 0 ? (
-                    <div style={{
-                        position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: '#9ca3af', background: 'rgba(31, 41, 55, 0.8)', zIndex: 10
-                    }}>
+                    <div className="absolute inset-0 flex items-center justify-center text-zinc-400 bg-zinc-900/80 z-10 backdrop-blur-sm">
                         Loading metrics...
                     </div>
                 ) : null}
 
                 {metrics.length === 0 && !isLoading ? (
-                    <div style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%',
-                        color: '#9ca3af'
-                    }}>
+                    <div className="flex items-center justify-center h-full text-zinc-500">
                         No usage data available.
                     </div>
                 ) : (
@@ -236,23 +193,25 @@ export function UsageMetrics() {
                                         layout="vertical"
                                         margin={{ top: 20, right: 30, left: 100, bottom: 5 }}
                                     >
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" horizontal={false} />
                                         <XAxis
                                             type="number"
                                             stroke="#60a5fa"
                                             label={{ value: 'Time (min)', position: 'top', fill: '#60a5fa' }}
+                                            tick={{ fill: '#71717a' }}
                                         />
                                         <YAxis
                                             dataKey="name"
                                             type="category"
-                                            stroke="#9ca3af"
+                                            stroke="#71717a"
                                             width={150}
                                             tick={<CustomizedAxisTick />}
                                             interval={0}
                                         />
                                         <Tooltip
-                                            contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.375rem', color: '#f3f4f6' }}
-                                            itemStyle={{ color: '#f3f4f6' }}
+                                            contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '0.5rem', color: '#f4f4f5' }}
+                                            itemStyle={{ color: '#f4f4f5' }}
+                                            cursor={{ fill: '#27272a', opacity: 0.4 }}
                                             formatter={(value: any) => [`${value} min`, 'Total Time']}
                                         />
                                         <Bar
@@ -283,29 +242,31 @@ export function UsageMetrics() {
                                     data={chartData}
                                     margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
                                 >
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
                                     <XAxis
                                         dataKey="name"
-                                        stroke="#9ca3af"
+                                        stroke="#71717a"
                                         angle={-45}
                                         textAnchor="end"
                                         height={80}
-                                        tick={{ fontSize: 12 }}
+                                        tick={{ fontSize: 12, fill: '#71717a' }}
                                     />
                                     <YAxis
                                         yAxisId="left"
                                         stroke="#60a5fa"
                                         label={{ value: 'Time (min)', angle: -90, position: 'insideLeft', fill: '#60a5fa' }}
+                                        tick={{ fill: '#71717a' }}
                                     />
                                     <YAxis
                                         yAxisId="right"
                                         orientation="right"
                                         stroke="#4ade80"
                                         label={{ value: 'Launches', angle: 90, position: 'insideRight', fill: '#4ade80' }}
+                                        tick={{ fill: '#71717a' }}
                                     />
                                     <Tooltip
-                                        contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.375rem', color: '#f3f4f6' }}
-                                        itemStyle={{ color: '#f3f4f6' }}
+                                        contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '0.5rem', color: '#f4f4f5' }}
+                                        itemStyle={{ color: '#f4f4f5' }}
                                     />
                                     <Legend verticalAlign="top" height={36} />
                                     <Bar yAxisId="left" dataKey="timeMinutes" name="Total Time (min)" fill="#3b82f6" barSize={20} radius={[4, 4, 0, 0]} />

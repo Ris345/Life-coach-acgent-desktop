@@ -109,6 +109,24 @@ async fn open_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
+// Tauri command to get system stats (Active Window)
+#[tauri::command]
+fn get_system_stats() -> Result<String, String> {
+    match active_win_pos_rs::get_active_window() {
+        Ok(window) => {
+            // Return JSON string with app name and title
+            // We sanitize quotes to prevent JSON breakage (basic)
+            let app_name = window.app_name.replace("\"", "\\\"");
+            let title = window.title.replace("\"", "\\\"");
+            Ok(format!(r#"{{"app_name": "{}", "title": "{}"}}"#, app_name, title))
+        },
+        Err(_) => {
+            // If we can't get the window, return Unknown
+            Ok(r#"{"app_name": "Unknown", "title": ""}"#.to_string())
+        }
+    }
+}
+
 // Tauri command to check backend health
 #[tauri::command]
 async fn check_backend_health() -> Result<String, String> {
@@ -130,7 +148,27 @@ async fn check_backend_health() -> Result<String, String> {
 }
 
 fn find_python_executable() -> Result<String, String> {
-    // Try common Python executable names
+    // 1. Check for local venv first (development/production bundle)
+    let mut venv_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    venv_path.push("..");
+    venv_path.push("python-backend");
+    venv_path.push("venv");
+    
+    #[cfg(target_os = "windows")]
+    venv_path.push("Scripts");
+    #[cfg(not(target_os = "windows"))]
+    venv_path.push("bin");
+    
+    #[cfg(target_os = "windows")]
+    venv_path.push("python.exe");
+    #[cfg(not(target_os = "windows"))]
+    venv_path.push("python3");
+
+    if venv_path.exists() {
+        return Ok(venv_path.to_string_lossy().to_string());
+    }
+
+    // 2. Fallback to system python
     let candidates = ["python3", "python", "py"];
     
     for cmd in &candidates {
@@ -145,6 +183,9 @@ fn find_python_executable() -> Result<String, String> {
     
     Err("Python executable not found. Please ensure Python 3.10+ is installed.".to_string())
 }
+
+mod tray;
+mod os_integration;
 
 fn main() {
     // Find Python executable
@@ -167,14 +208,17 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(move |app| {
+            // Initialize System Tray
+            tray::create_tray(app.handle())?;
+
             // Debug: Log window creation
             println!("Tauri app setup - creating window");
             
             // Get the main window and verify it's loading correctly
             if let Some(window) = app.get_webview_window("main") {
                 println!("✅ Main window found");
-                println!("Window URL should be: http://127.0.0.1:3000");
                 
                 // Show window
                 let _ = window.show();
@@ -186,59 +230,12 @@ fn main() {
                         std::thread::sleep(std::time::Duration::from_millis(1000));
                         let check_url_script = r#"
                             console.log('Window URL:', window.location.href);
-                            console.log('Document ready:', document.readyState);
-                            console.log('Root element:', !!document.getElementById('root'));
                         "#;
                         let _ = window.eval(check_url_script);
                     }
                 });
-                
-                // Monitor content loading - JavaScript side handles reload logic
-                std::thread::spawn({
-                    let window = window.clone();
-                    move || {
-                        // Wait for initial page load
-                        std::thread::sleep(std::time::Duration::from_millis(4000));
-                        
-                        // Check if React content loaded and log status
-                        // The JavaScript in index.html handles the actual reload logic
-                        let check_script = r#"
-                            (function() {
-                                console.log('=== Tauri Window Content Check ===');
-                                const root = document.getElementById('root');
-                                if (!root) {
-                                    console.error('❌ Root element not found!');
-                                    return;
-                                }
-                                
-                                const hasReactContent = root.children.length > 0 && 
-                                    !root.children[0].classList.contains('loading');
-                                
-                                if (!hasReactContent && document.readyState === 'complete') {
-                                    console.warn('⚠️ No React content after 4 seconds');
-                                    console.log('JavaScript will handle reload if needed');
-                                } else if (hasReactContent) {
-                                    console.log('✅ React content loaded');
-                                } else {
-                                    console.log('⏳ Still loading...');
-                                }
-                            })();
-                        "#;
-                        
-                        // Execute the check script (eval returns Result<()>)
-                        if let Err(e) = window.eval(check_script) {
-                            println!("⚠️ Error executing content check: {:?}", e);
-                        } else {
-                            println!("✅ Content check script executed");
-                        }
-                    }
-                });
             } else {
                 println!("⚠️ Warning: Main window not found during setup");
-                // List all windows for debugging
-                for window in app.webview_windows().values() {
-                    println!("Found window: {}", window.label());
-                }
             }
             
             // Create Python process state
@@ -247,7 +244,6 @@ fn main() {
             // Start the Python backend
             if let Err(e) = python_process.start(python_exe.clone(), backend_path.clone()) {
                 eprintln!("Failed to start Python backend: {}", e);
-                // Continue anyway - the app can still run, backend might be started manually
             } else {
                 println!("Python backend started successfully");
             }
@@ -255,19 +251,52 @@ fn main() {
             // Store the process in app state
             app.manage(Arc::new(std::sync::Mutex::new(python_process)));
 
+            // Start Tracking Loop
+            std::thread::spawn(|| {
+                // Wait for Python to start
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                
+                loop {
+                    if let Ok(window) = active_win_pos_rs::get_active_window() {
+                        // Get URL if browser
+                        let url = os_integration::get_browser_url(&window.app_name);
+
+                        let payload = serde_json::json!({
+                            "app_name": window.app_name,
+                            "window_title": window.title,
+                            "url": url 
+                        });
+                        
+                        // Debug log
+                        println!("Pushing activity: App={}, URL={:?}", window.app_name, url);
+
+                        // Use curl as fallback since reqwest is timing out
+                        let json_str = serde_json::to_string(&payload).unwrap_or_default();
+                        
+                        let _ = std::process::Command::new("curl")
+                            .args(&[
+                                "-X", "POST",
+                                "-H", "Content-Type: application/json",
+                                "-d", &json_str,
+                                "http://127.0.0.1:14200/api/activity/update",
+                                "--max-time", "1"
+                            ])
+                            .output(); // Ignore output, fire and forget
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
+            });
+
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Kill Python process when the window is closed
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
-                if let Some(process_state) = window.try_state::<Arc<std::sync::Mutex<PythonProcess>>>() {
-                    if let Ok(mut process) = process_state.lock() {
-                        process.kill();
-                    }
-                }
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Hide window instead of closing
+                window.hide().unwrap();
+                api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![check_backend_health, open_url])
+        .invoke_handler(tauri::generate_handler![check_backend_health, open_url, get_system_stats])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

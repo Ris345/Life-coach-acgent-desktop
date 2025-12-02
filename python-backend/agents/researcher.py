@@ -1,27 +1,27 @@
 from typing import Any, Dict, List
 from agents.base import BaseAgent
-from services.gemini_service import get_gemini_service
+from services.openai_service import get_openai_service
 
 class ResearchAgent(BaseAgent):
     """
     Agent responsible for researching and breaking down user goals.
-    Uses Gemini LLM to understand requirements and create roadmaps.
+    Uses OpenAI LLM to understand requirements and create roadmaps.
     """
     
     def __init__(self):
         super().__init__("ResearchAgent")
         self.current_goal = None
         self.roadmap = None
-        self.gemini = None
+        self.openai = None
 
     async def start(self):
-        """Initialize Gemini service on start."""
+        """Initialize OpenAI service on start."""
         await super().start()
         try:
-            self.gemini = get_gemini_service()
-            print(f"✅ {self.name} initialized with Gemini")
+            self.openai = get_openai_service()
+            print(f"✅ {self.name} initialized with OpenAI")
         except Exception as e:
-            print(f"⚠️ Warning: {self.name} could not initialize Gemini: {e}")
+            print(f"⚠️ Warning: {self.name} could not initialize OpenAI: {e}")
 
     async def process(self, input_data: Any) -> Any:
         """
@@ -35,13 +35,13 @@ class ResearchAgent(BaseAgent):
 
     async def analyze_goal(self, goal_text: str) -> Dict[str, Any]:
         """
-        Analyze the goal using Gemini LLM.
+        Analyze the goal using OpenAI LLM.
         """
         print(f"🔍 Researching goal: {goal_text}")
         self.current_goal = goal_text
         
-        if not self.gemini:
-            print("⚠️ Gemini not available, returning placeholder data")
+        if not self.openai:
+            print("⚠️ OpenAI not available, returning placeholder data")
             return self._get_placeholder_response(goal_text)
         
         try:
@@ -49,38 +49,36 @@ class ResearchAgent(BaseAgent):
 
 User Goal: "{goal_text}"
 
-Please analyze this goal and provide:
-1. A list of key skills needed to achieve this goal
-2. Major milestones or phases in the journey
-3. An estimated timeline in weeks
-4. Any prerequisites or foundational knowledge required
+Provide a structured analysis including:
+1. Core skills required
+2. Key milestones
+3. Estimated timeline (in weeks)
+4. Potential challenges
 
 Return your response as a JSON object with this structure:
 {{
-    "goal": "the original goal",
+    "goal": "{goal_text}",
     "skills": ["skill1", "skill2", ...],
     "milestones": ["milestone1", "milestone2", ...],
-    "estimated_weeks": number,
-    "prerequisites": ["prereq1", "prereq2", ...]
+    "estimated_weeks": 12,
+    "challenges": ["challenge1", "challenge2", ...]
 }}"""
 
-            response = await self.gemini.generate_structured_content(prompt, temperature=0.7)
+            response = await self.openai.generate_structured_content(prompt, temperature=0.7)
             
-            # Store the roadmap
             self.roadmap = response
-            
             return response
             
         except Exception as e:
-            print(f"❌ Error analyzing goal with Gemini: {e}")
+            print(f"❌ Error analyzing goal with OpenAI: {e}")
             return self._get_placeholder_response(goal_text)
     
-    def _get_placeholder_response(self, goal_text: str) -> Dict[str, Any]:
-        """Fallback response if Gemini is unavailable."""
+    def _get_placeholder_response(self, goal_text: str) -> Dict:
+        """Fallback response if OpenAI is unavailable."""
         return {
             "goal": goal_text,
-            "skills": ["Research required skills", "Create learning plan"],
-            "milestones": ["Define clear objectives", "Break down into steps"],
-            "estimated_weeks": 12,
-            "prerequisites": ["Motivation", "Time commitment"]
+            "skills": ["Planning", "Execution", "Review"],
+            "milestones": ["Start", "Middle", "End"],
+            "estimated_weeks": 4,
+            "challenges": ["Time management", "Consistency"]
         }
