@@ -1,6 +1,7 @@
 """
 OpenAI Service - Centralized service for interacting with OpenAI API.
 Provides reusable methods for all agents to call OpenAI LLMs.
+Used for advanced context analysis for Smart Nudge.
 """
 
 import os
@@ -99,6 +100,69 @@ class OpenAIService:
         except Exception as e:
             print(f"Error generating structured content with OpenAI: {e}")
             raise
+
+    async def analyze_context(self, goal: Dict[str, Any], activity_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Analyze user activity context against their goal using OpenAI.
+        Specific for Smart Nudge Agent.
+        """
+        if not self.api_key:
+            return {"nudge_needed": False, "reason": "OpenAI not configured"}
+
+        goal_text = goal.get("goal_text", "Unknown Goal")
+        
+        # Format activity for prompt
+        tabs = activity_data.get("tabs", [])
+        active_app = activity_data.get("active_app", "Unknown")
+        current_url = activity_data.get("current_url", "")
+        
+        prompt = f"""
+        You are an intelligent focus assistant.
+        The user's current goal is: "{goal_text}".
+        
+        CURRENT ACTIVITY:
+        - Active App: {active_app}
+        - Current URL: {current_url}
+        - Open Tabs: {[t.get('title', '') for t in tabs[:5]]} (showing top 5)
+        
+        Analyze if the user is distracted or on track.
+        - Differentiate between "productive" learning (e.g. YouTube tutorial for coding) vs "distraction" (e.g. funny cat videos).
+        - If the URL contains "youtube.com", check the title for relevance to "{goal_text}".
+        - If the user is on a known distractor (social media, entertainment) and it's NOT relevant to the goal, flag it.
+        
+        Determine the appropriate intervention level (0-3):
+        0: On track or neutral.
+        1: Mild distraction (gentle nudge).
+        2: Clear distraction (firm warning).
+        3: Severe/Chronic distraction (intervention needed).
+        
+        Return JSON ONLY:
+        {{
+            "nudge_needed": boolean,
+            "level": int,
+            "reason": "short explanation",
+            "suggested_action": "notify" | "close_tab" | "none"
+        }}
+        """
+        
+        try:
+            # Reusing generate_structured_content would be cleaner, but keeping specific prompt config for now
+            response = await self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": "You are a helpful productivity assistant. Output valid JSON only."},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.3
+            )
+            
+            content = response.choices[0].message.content
+            return json.loads(content)
+            
+        except Exception as e:
+            print(f"❌ OpenAI Analysis Error: {e}")
+            return {"nudge_needed": False, "reason": f"Analysis failed: {str(e)}"}
 
 # Global instance (singleton pattern)
 _openai_service: Optional[OpenAIService] = None

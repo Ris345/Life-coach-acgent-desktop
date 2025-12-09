@@ -76,6 +76,12 @@ CONTEXT SWITCHES (TODAY): {context_switches}
 HISTORICAL PERFORMANCE (LAST 7 DAYS):
 {history_summary}
 
+IMPORTANT CONTEXT:
+- The metrics above are what the system has automated tracked.
+- If data seems sparse, it means the user hasn't been active on the computer, or the tracking just started.
+- DO NOT assume the user is "doing nothing" if the tracked time is low; simply state that based on *tracked* activity, the data is limited.
+- Do not invent or hallucinate activities not listed.
+
 Based on this information, calculate:
 1. A probability score (0.0 to 1.0) representing likelihood of success for the goal: "{goal_summary}"
 2. Key positive factors that increase success probability (focus on activities relevant to the goal)
@@ -112,8 +118,16 @@ Return your response as a JSON object with this structure:
                 focus_minutes = 0
                 distraction_minutes = 0
                 if tab_analysis:
-                    focus_minutes = int((tab_analysis.get("job_search_time", 0) + tab_analysis.get("learning_time", 0)) / 60)
-                    distraction_minutes = int(tab_analysis.get("entertainment_time", 0) / 60)
+                     # Calculate using the same logic as format, or simplistic if raw
+                     if isinstance(tab_analysis, dict) and any("total_seconds" in v for v in tab_analysis.values() if isinstance(v, dict)):
+                         # Re-analyze just for stats saving (inefficient but safe)
+                         from utils.analysis import analyze_tab_usage
+                         analyzed = analyze_tab_usage(tab_analysis)
+                         focus_minutes = int(analyzed["productive_time"] / 60)
+                         distraction_minutes = int(analyzed["distraction_time"] / 60)
+                     else: 
+                        focus_minutes = int((tab_analysis.get("job_search_time", 0) + tab_analysis.get("learning_time", 0)) / 60)
+                        distraction_minutes = int(tab_analysis.get("entertainment_time", 0) / 60)
                 
                 stats = {
                     "goal_id": goal_analysis.get("id") if goal_analysis else None,
@@ -162,17 +176,24 @@ Estimated Timeline: {weeks} weeks"""
         if not tab_analysis:
             return "No tab analysis available."
         
-        job_time = tab_analysis.get("job_search_time", 0) / 60  # Convert to minutes
-        learning_time = tab_analysis.get("learning_time", 0) / 60
-        entertainment_time = tab_analysis.get("entertainment_time", 0) / 60
-        total_time = tab_analysis.get("total_time", 0) / 60
-        productive_ratio = tab_analysis.get("productive_ratio", 0)
+        # Use simple formatting since input is now likely already analyzed or raw
+        # If it's raw usage dict:
+        from utils.analysis import analyze_tab_usage
+        if isinstance(tab_analysis, dict) and any("total_seconds" in v for v in tab_analysis.values() if isinstance(v, dict)):
+             # It's raw data, analyze it first
+             analyzed = analyze_tab_usage(tab_analysis)
+             job_time = analyzed["productive_time"] / 60
+             distraction_time = analyzed["distraction_time"] / 60
+             total_time = analyzed["total_time"] / 60
+        else:
+             # Fallback or already analyzed data structure
+             job_time = tab_analysis.get("job_search_time", 0) / 60
+             distraction_time = tab_analysis.get("entertainment_time", 0) / 60
+             total_time = tab_analysis.get("total_time", 0) / 60
         
-        return f"""Time on job search sites: {job_time:.1f} minutes
-Time on learning platforms: {learning_time:.1f} minutes
-Time on entertainment sites: {entertainment_time:.1f} minutes
-Total browsing time: {total_time:.1f} minutes
-Productive time ratio: {productive_ratio:.1%}"""
+        return f"""Productive time: {job_time:.1f} minutes
+Distraction time: {distraction_time:.1f} minutes
+Total browsing time: {total_time:.1f} minutes"""
 
     def _format_history(self, history: List[Dict]) -> str:
         """Format historical stats for the prompt."""
@@ -188,7 +209,6 @@ Productive time ratio: {productive_ratio:.1%}"""
             lines.append(f"- {date_str}: Probability {prob}%, Focus {focus}m, Distraction {distract}m")
         
         return "\n".join(lines)
-
     def _get_placeholder_response(self) -> Dict:
         """Fallback response if Gemini is unavailable."""
         return {
