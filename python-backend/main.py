@@ -682,6 +682,37 @@ async def get_morning_briefing(request: Dict[str, Any]):
     return briefing
 
 
+class CoachingRequest(BaseModel):
+    message: str
+    user_id: str
+    context: Optional[Dict[str, Any]] = None
+
+@app.post("/api/coaching/chat")
+async def chat_with_coach(request: CoachingRequest):
+    """
+    Chat with the AI Life Coach.
+    """
+    from services.openai_service import get_openai_service
+    service = get_openai_service()
+    
+    # Construct prompt with context
+    context_str = ""
+    if request.context:
+        context_str = f"\nUser Context: {json.dumps(request.context)}"
+        
+    prompt = f"""
+    You are a supportive and wise AI Life Coach.
+    Your goal is to help the user stay focused, plan their day, and overcome distractions.
+    
+    User Message: {request.message}
+    {context_str}
+    
+    Provide a helpful, encouraging, and actionable response. Keep it concise.
+    """
+    
+    response = await service.generate_content(prompt)
+    return {"response": response}
+
 
 
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Settings, CheckCircle, ArrowRight } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 import { GlassCard } from './GlassCard';
 
 interface PermissionRequestProps {
@@ -45,10 +46,16 @@ export function PermissionRequest({ onComplete }: PermissionRequestProps) {
         return () => clearInterval(interval);
     }, [isPolling]);
 
-    const openSystemSettings = () => {
-        // This would trigger a Tauri command to open System Settings
-        // For now, we just instruct the user
-        alert("Please open System Settings -> Privacy & Security -> Accessibility and enable LifeOS (or Terminal if running in dev).");
+    const openSystemSettings = async () => {
+        try {
+            // macOS Accessibility Settings URL
+            await invoke('open_url', {
+                url: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+            });
+        } catch (e) {
+            console.error("Failed to open settings:", e);
+            alert("Please open System Settings -> Privacy & Security -> Accessibility manually.");
+        }
     };
 
     return (

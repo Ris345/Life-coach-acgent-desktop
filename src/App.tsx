@@ -2,17 +2,21 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Login } from './components/Login';
 import { Dashboard } from './components/Dashboard';
 import { AuthCallback } from './pages/AuthCallback';
-import { Onboarding } from './components/Onboarding';
+import { OnboardingFlow } from './components/OnboardingFlow';
 import { Overlay } from './windows/Overlay';
 import { AppLayout } from './components/layout/AppLayout';
 import { GoalLibrary } from './components/GoalLibrary';
 import { AgentAnalytics } from './components/AgentAnalytics';
+import { Coaching } from './components/Coaching';
+import { Settings } from './components/Settings';
 import { useEffect, useState } from 'react';
 import { trackPageView } from './utils/analytics';
 
 function AppContent() {
   const { isAuthenticated, user, isLoading } = useAuth();
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
+  // Check if user has seen onboarding locally
+  const [hasViewedOnboarding] = useState(() => localStorage.getItem('onboarding_flow_completed') === 'true');
 
   // Debug: Log authentication state changes
   useEffect(() => {
@@ -67,9 +71,8 @@ function AppContent() {
 
   // If authenticated, check onboarding status
   if (isAuthenticated && user) {
-    if (!user.onboarding_completed) {
-      return <Onboarding />;
-    }
+    // Legacy DB onboarding check removed in favor of pre-login flow
+    // if (!user.onboarding_completed) { return <Onboarding />; }
 
     const renderContent = () => {
       switch (currentPath) {
@@ -78,22 +81,37 @@ function AppContent() {
         case '/analytics':
           return <AgentAnalytics />;
         case '/coaching':
-          return <div className="p-8 text-zinc-500">Coaching Coming Soon</div>;
+          return <Coaching />;
         case '/settings':
-          return <div className="p-8 text-zinc-500">Settings Coming Soon</div>;
+          return <Settings />;
         default:
           return <Dashboard />;
       }
     };
 
+    const handleNavigate = (path: string) => {
+      window.history.pushState({}, '', path);
+      setCurrentPath(path);
+    };
+
     return (
-      <AppLayout>
+      <AppLayout currentPath={currentPath} onNavigate={handleNavigate}>
         {renderContent()}
       </AppLayout>
     );
   }
 
-  // Show login if not authenticated
+  // Show Pre-Login Onboarding if not viewed yet
+  if (!hasViewedOnboarding) {
+    return <OnboardingFlow onComplete={() => {
+      // Mark as viewed for future sessions
+      localStorage.setItem('onboarding_flow_completed', 'true');
+      // We don't force update state here; OnboardingFlow handles transition to Login
+      // Next time app loads, hasViewedOnboarding will be true
+    }} />;
+  }
+
+  // Show login if not authenticated and onboarding viewed
   return <Login />;
 }
 

@@ -1,42 +1,31 @@
 import { useState } from 'react';
 import { PrivacyConsent } from './PrivacyConsent';
-import { PermissionRequest } from './PermissionRequest';
-import { useAuth } from '../contexts/AuthContext';
+import { Login } from './Login';
 
 interface OnboardingFlowProps {
     onComplete: () => void;
 }
 
 export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
-    const [step, setStep] = useState<'welcome' | 'permissions' | 'consent'>('welcome');
-    const { user } = useAuth();
+    const [step, setStep] = useState<'welcome' | 'consent' | 'permissions' | 'login'>('welcome');
 
     const handleConsent = async (consented: boolean, analyticsOptIn: boolean) => {
         if (!consented) {
-            // Handle decline (maybe show limited mode warning or exit)
             alert("LifeOS requires these permissions to function. The app will run in limited mode.");
-            onComplete();
-            return;
+            // Still proceed but maybe track refusal?
         }
 
-        // Save consent to backend
-        if (user?.id) {
-            try {
-                await fetch('http://127.0.0.1:14200/api/user/consent', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        user_id: user.id,
-                        version: '1.0',
-                        consented: true,
-                        analytics_opt_in: analyticsOptIn
-                    })
-                });
-            } catch (e) {
-                console.error("Failed to save consent", e);
-            }
+        // Save consent locally or prepare to send after login
+        if (consented) {
+            localStorage.setItem('privacy_consent', JSON.stringify({
+                version: '1.0',
+                consented: true,
+                analytics_opt_in: analyticsOptIn,
+                timestamp: new Date().toISOString()
+            }));
         }
 
+        setStep('login');
         onComplete();
     };
 
@@ -51,7 +40,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                         Your intelligent, privacy-first companion for deep work and meaningful progress.
                     </p>
                     <button
-                        onClick={() => setStep('permissions')}
+                        onClick={() => setStep('consent')}
                         className="px-8 py-4 bg-white text-black rounded-full font-bold text-lg hover:scale-105 transition-transform"
                     >
                         Get Started
@@ -61,12 +50,12 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         );
     }
 
-    if (step === 'permissions') {
-        return <PermissionRequest onComplete={() => setStep('consent')} />;
-    }
-
     if (step === 'consent') {
         return <PrivacyConsent onConsent={handleConsent} />;
+    }
+
+    if (step === 'login') {
+        return <Login />;
     }
 
     return null;

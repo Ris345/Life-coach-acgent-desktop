@@ -1,22 +1,25 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Sidebar } from './Sidebar';
 
 interface AppLayoutProps {
     children: React.ReactNode;
+    currentPath: string;
+    onNavigate: (path: string) => void;
 }
 
-export function AppLayout({ children }: AppLayoutProps) {
-    const [currentPath, setCurrentPath] = useState(window.location.pathname);
+export function AppLayout({ children, currentPath, onNavigate }: AppLayoutProps) {
+    // State lifted to App.tsx
+    // const [currentPath, setCurrentPath] = useState(window.location.pathname);
 
-    const handleNavigate = (path: string) => {
-        window.history.pushState({}, '', path);
-        setCurrentPath(path);
-    };
+    // const handleNavigate = (path: string) => {
+    //     window.history.pushState({}, '', path);
+    //     setCurrentPath(path);
+    // };
 
     return (
         <div className="flex h-screen bg-zinc-950 text-white font-sans overflow-hidden">
             {/* Left Sidebar */}
-            <Sidebar currentPath={currentPath} onNavigate={handleNavigate} />
+            <Sidebar currentPath={currentPath} onNavigate={onNavigate} />
 
             {/* Main Content Area */}
             <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">

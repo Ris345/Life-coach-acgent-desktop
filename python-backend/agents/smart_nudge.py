@@ -31,6 +31,7 @@ class SmartNudgeAgent(BaseAgent):
         self.nudge_level = 0
         self.last_nudge_time: Optional[datetime] = None
         self.nudge_interval = 60 # Check every minute
+        self.active_nudge: Optional[str] = None # Current active nudge message
         
         # Dependencies
         self.data_collector = None 
@@ -142,6 +143,7 @@ class SmartNudgeAgent(BaseAgent):
 
         self.nudge_level = level
         self.last_nudge_time = datetime.now()
+        self.active_nudge = reason # Update active nudge for polling
         
         print(f"🤖 AI Nudge Triggered: {reason} (Level {level})")
         
